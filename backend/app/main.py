@@ -41,3 +41,39 @@ def create_app() -> FastAPI:
     async def app_error(request: Request, exc: AppError):
         return JSONResponse({"code": exc.code, "message": exc.message,
                              "request_id": getattr(request.state, "request_id", "")}, status_code=exc.status_code)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError):
+        # Never echo rejected input: it may contain passwords or tokens.
+        fields = [{"location": list(e["loc"]), "message": e["msg"], "type": e["type"]} for e in exc.errors()]
+        return JSONResponse({"code": "validation_error", "message": "Check the request fields.",
+                             "fields": fields, "request_id": getattr(request.state, "request_id", "")}, status_code=422)
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(request: Request, exc: Exception):
+        rid = getattr(request.state, "request_id", "")
+        logging.getLogger(__name__).error("Unhandled %s request_id=%s", type(exc).__name__, rid)
+        return JSONResponse({"code": "internal_error", "message": "The request could not be completed.",
+                             "request_id": rid}, status_code=500)
+
+    @app.get("/health/live", tags=["health"])
+    async def live():
+        return {"status": "ok", "service": "SmartDine AI", "version": "0.1.0"}
+
+    @app.get("/health/ready", tags=["health"])
+    async def ready():
+        capabilities = get_settings().capabilities()
+        if not capabilities["database"] or not capabilities["administration"]:
+            return JSONResponse({"status": "configuration_required", "capabilities": capabilities}, status_code=503)
+        gateway = await make_gateway(admin=True)
+        try:
+            database = await gateway.service("health")
+        finally:
+            await gateway.close()
+        return {"status": "ready", "database": database, "capabilities": capabilities}
+
+    app.include_router(router)
+    return app
+
+
+app = create_app()
