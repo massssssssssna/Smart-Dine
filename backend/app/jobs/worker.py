@@ -44,3 +44,32 @@ async def process_job(job: dict, gateway, lease_seconds: int, handler=handle_job
         pulse.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await pulse
+
+
+async def run_worker(stop: asyncio.Event | None = None):
+    settings = get_settings()
+    stop = stop or asyncio.Event()
+    gateway = await make_gateway(admin=True)
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        with contextlib.suppress(NotImplementedError):
+            loop.add_signal_handler(sig, stop.set)
+    try:
+        while not stop.is_set():
+            try:
+                job = await gateway.service("job_claim", {"lease_seconds": settings.job_lease_seconds})
+                if job:
+                    await process_job(job, gateway, settings.job_lease_seconds)
+                    continue
+            except Exception as exc:
+                logger.warning("Worker polling failed", extra={"error_type": type(exc).__name__})
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=settings.job_poll_seconds)
+    finally:
+        await gateway.close()
+        await close_pool()
+
+
+if __name__ == "__main__":
+    configure_logging()
+    asyncio.run(run_worker())
