@@ -48,3 +48,28 @@ async def bootstrap(email: str, full_name: str, password: str):
                         json.dumps({"full_name": full_name}),
                     ),
                 )
+
+        result = await gateway.service("bootstrap_manager", {"user_id": user_id, "full_name": full_name})
+        print(f"Manager activated: {result['email']}")
+    finally:
+        await gateway.close()
+        await close_pool()
+
+
+def main():
+    email = input("First manager email: ").strip().lower()
+    name = input("Full name: ").strip()
+    password = getpass("Password (minimum 12 characters; never saved): ")
+    confirm = getpass("Confirm password: ")
+    if "@" not in email or not name or len(password) < 12 or password != confirm:
+        raise SystemExit("Check the email, name and matching passwords (12+ characters).")
+    try:
+        asyncio.run(bootstrap(email, name, password))
+    except AppError as exc:
+        raise SystemExit(f"{exc.code}: {exc.message}") from None
+    except Exception as exc:
+        raise SystemExit(f"Bootstrap failed ({type(exc).__name__}): {exc}. Check configuration; retry safely.") from None
+
+
+if __name__ == "__main__":
+    main()
