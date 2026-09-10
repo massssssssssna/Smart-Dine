@@ -30,3 +30,29 @@ async def remove_stock(item_id: UUID, body: StockMovement, gateway: GatewayDep, 
 @router.get("/ingredients")
 async def list_ingredients(gateway: GatewayDep, actor: ActorDep, page: PageDep):
     return await InventoryService(gateway, actor.role).read("inventory", page)
+
+
+@router.get("/ingredients/{ingredient_id}")
+async def get_ingredient(ingredient_id: UUID, gateway: GatewayDep, actor: ActorDep):
+    return await InventoryService(gateway, actor.role).read("inventory", {"id": str(ingredient_id)})
+
+
+@router.post("/ingredients", status_code=201)
+async def create_ingredient(body: IngredientCreate, gateway: GatewayDep, manager: ManagerDep, key: IdempotencyKey):
+    return await InventoryService(gateway, manager.role).execute("ingredient_create", payload(body), key)
+
+
+@router.put("/ingredients/{ingredient_id}")
+async def update_ingredient(ingredient_id: UUID, body: IngredientUpdate, gateway: GatewayDep, manager: ManagerDep, key: IdempotencyKey):
+    return await InventoryService(gateway, manager.role).execute("ingredient_update", payload(body, ingredient_id), key)
+
+
+@router.get("/transactions")
+async def list_transactions(gateway: GatewayDep, actor: ActorDep, page: PageDep, ingredient_id: UUID | None = None):
+    params = {**page, **({"ingredient_id": str(ingredient_id)} if ingredient_id else {})}
+    return await InventoryService(gateway, actor.role).read("inventory_transactions", params)
+
+
+@router.post("/transactions", status_code=201)
+async def record_transaction(body: InventoryRecord, gateway: GatewayDep, actor: ActorDep, key: IdempotencyKey):
+    return await InventoryService(gateway, actor.role).execute("inventory_record", payload(body), key)
