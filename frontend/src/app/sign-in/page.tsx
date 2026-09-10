@@ -47,3 +47,51 @@ export default function SignIn() {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><ChefHat size={13} /> Kitchen</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><ClipboardList size={13} /> Cashier</span>
         </div>
+
+        <form onSubmit={submit}>
+          <Field label="Email address">
+            <input name="email" type="email" autoComplete="username" placeholder="name@smartdine.pk" required autoFocus />
+          </Field>
+          <Field label="Password">
+            <div className="password">
+              <input
+                name="password"
+                type={show ? 'text' : 'password'}
+                autoComplete="current-password"
+                placeholder="Enter your password"
+                required
+              />
+              <button
+                type="button"
+                className="icon"
+                aria-label={show ? 'Hide password' : 'Show password'}
+                onClick={() => setShow(!show)}
+              >
+                {show ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
+          </Field>
+
+          <p className="small muted">Credentials are assigned by your General Manager.</p>
+
+          {error && <p role="alert" className="error">{error}</p>}
+
+          <button className="gold full" disabled={busy}>
+            {destination ? (
+              <>Opening {destination}… <Sparkles size={16} /></>
+            ) : busy ? (
+              'Authenticating…'
+            ) : (
+              <>Sign in to Station <ArrowRight size={16} /></>
+            )}
+          </button>
+        </form>
+
+        <Link className="back-link" href="/">← Back to restaurant home</Link>
+      </section>
+      <div className="login-footer">
+        <LockKeyhole size={13} /> SECURE RESTAURANT OPERATIONS · ASIA/KARACHI
+      </div>
+    </main>
+  );
+}
