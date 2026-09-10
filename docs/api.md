@@ -64,4 +64,4 @@ Order workflow: create pending order, optionally edit, transition to preparing (
 | POST | `/api/v1/recommendations/{recommendation_id}/apply` | Apply Recommendation |
 | POST | `/api/v1/recommendations/{recommendation_id}/reject` | Reject Recommendation |
 | GET | `/api/v1/audit` | List Audit Events |
-| GET | `/api/v1/audit/{event_id}` | Get Audit Event |
+| GET | `/api/v1/audit/{event_id}` | Get Audit Event |
