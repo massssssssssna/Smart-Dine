@@ -32,3 +32,23 @@ async def inspect(live: bool):
             finally:
                 await gateway.close()
                 await close_pool()
+
+        if settings.capabilities()["groq"]:
+            try:
+                from app.integrations.groq_client import make_groq_client
+                async with make_groq_client() as client:
+                    models = {model.id for model in (await client.models.list()).data}
+                    result["live"]["groq_models"] = {
+                        settings.groq_assistant_model: settings.groq_assistant_model in models,
+                        settings.groq_review_model: settings.groq_review_model in models,
+                    }
+            except Exception as exc:
+                result["live"]["groq_models"] = {"status": "failed", "error_type": type(exc).__name__}
+
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--live", action="store_true", help="Read-only connection and model-availability checks")
+    asyncio.run(inspect(parser.parse_args().live))
