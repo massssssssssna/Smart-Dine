@@ -35,3 +35,31 @@ async def get_actor(credentials: Annotated[HTTPAuthorizationCredentials | None, 
         )
     finally:
         await gateway.close()
+
+
+async def require_manager(actor: Annotated[Actor, Depends(get_actor)]) -> Actor:
+    if actor.role != "manager":
+        raise AppError("manager_required", "Manager access is required.", 403)
+    return actor
+
+
+async def require_cashier(actor: Annotated[Actor, Depends(get_actor)]) -> Actor:
+    if actor.role != 'manager' and actor.staff_type != 'cashier':
+        raise AppError('cashier_required', 'Cashier access is required.', 403)
+    return actor
+
+
+async def get_gateway(actor: Annotated[Actor, Depends(get_actor)]) -> AsyncIterator[Gateway]:
+    gateway = await make_gateway(actor.access_token)
+    try:
+        yield gateway
+    finally:
+        await gateway.close()
+
+
+async def get_admin_gateway() -> AsyncIterator[Gateway]:
+    gateway = await make_gateway(admin=True)
+    try:
+        yield gateway
+    finally:
+        await gateway.close()
