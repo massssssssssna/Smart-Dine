@@ -32,3 +32,26 @@ def bounded_result(result: dict, max_chars: int = 24000) -> dict:
     if len(json.dumps(data, default=str, ensure_ascii=False)) > max_chars:
         raise AppError("evidence_too_large", "Evidence exceeds the assistant context budget", 502)
     return data
+
+
+async def execute_read_tool(name: str, arguments: dict, gateway, period: dict) -> dict:
+    if name not in RESOURCE_MAP or arguments != {}:
+        raise AppError("invalid_ai_tool", "Assistant requested an unsupported tool or arguments", 502)
+    result = bounded_result(await gateway.read(RESOURCE_MAP[name], {**period, "limit": 100, "offset": 0}))
+    temporal_scope = (
+        "Current inventory snapshot; historical stock levels cannot be inferred."
+        if name == "inventory_status" else
+        "Recorded forecast runs; each record has its own training cutoff and target month."
+        if name == "demand_forecasts" else
+        "Selected reporting period, inclusive, Asia/Karachi."
+    )
+    return {"tool": name, "period": period, "data": result, "temporal_scope": temporal_scope,
+            "scope_note": "List tools include at most 100 records; inspect total before drawing population-wide conclusions."}
+
+
+def validate_citations(content: str, evidence: list[dict]) -> AssistantAnswer:
+    answer = AssistantAnswer.model_validate_json(content)
+    allowed = {entry["id"] for entry in evidence}
+    if not set(answer.evidence_ids).issubset(allowed):
+        raise ValueError("Assistant cited evidence that was not produced by its tools")
+    return answer
