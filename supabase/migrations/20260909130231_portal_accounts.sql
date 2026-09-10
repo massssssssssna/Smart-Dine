@@ -224,4 +224,4 @@ begin
  return new;
 end $$;
 revoke all on function private.sync_auth_account() from public,anon,authenticated;
-create trigger sd_auth_account_updated after update of email,encrypted_password on auth.users for each row execute function private.sync_auth_account();
+create trigger sd_auth_account_updated after update of email,encrypted_password on auth.users for each row execute function private.sync_auth_account();
