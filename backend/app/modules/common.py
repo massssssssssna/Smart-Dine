@@ -43,3 +43,45 @@ def pagination(
 
 
 PageDep = Annotated[dict, Depends(pagination)]
+
+
+def date_range(
+    start_date: date,
+    end_date: date,
+) -> dict:
+    if end_date < start_date:
+        raise AppError("invalid_date_range", "End date must be on or after start date.", 422)
+    if (end_date - start_date).days > 366:
+        raise AppError("invalid_date_range", "Select a reporting period of at most 367 days.", 422)
+    return {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()}
+
+
+DateRangeDep = Annotated[dict, Depends(date_range)]
+
+
+def payload(model: BaseModel, entity_id: UUID | None = None) -> dict:
+    result = model.model_dump(mode="json", exclude_none=True)
+    if entity_id is not None:
+        result["id"] = str(entity_id)
+    return result
+
+
+_FINANCIAL_KEYS = frozenset({
+    "average_cost", "unit_cost", "cost", "cost_snapshot", "ingredient_cost_snapshot",
+    "packaging_cost", "packaging_cost_snapshot", "discount_allocated", "fee_allocated",
+    "ingredient_cost", "ingredient_cost_total", "direct_cost", "direct_costs",
+    "contribution", "contribution_margin", "contribution_percentage", "margin",
+    "margin_percentage", "operating_profit", "consumption_snapshots", "cost_breakdown",
+    "loss_amount", "loss_value", "total_cost", "inventory_value",
+})
+
+
+def operational_response(value: Any, role: str) -> Any:
+    """Defence in depth; SQL must independently return authorized projections."""
+    if role == "manager":
+        return value
+    if isinstance(value, dict):
+        return {key: operational_response(item, role) for key, item in value.items() if key not in _FINANCIAL_KEYS}
+    if isinstance(value, list):
+        return [operational_response(item, role) for item in value]
+    return value
