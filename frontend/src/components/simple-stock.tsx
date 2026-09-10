@@ -42,3 +42,24 @@ export function StockPanel({onChanged}:{onChanged:()=>void}) {
     </Modal>}
   </section>;
 }
+
+function StockForm({editor,onDone}:{editor:Editor;onDone:()=>void}) {
+  const [error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const retry=useRef<{body:string;key:string}|null>(null);
+  const create=editor.kind==='create',remove=editor.kind==='remove';
+  return <form className="modal-form" onSubmit={async e=>{
+    e.preventDefault();setBusy(true);setError('');const f=new FormData(e.currentTarget);
+    const body={quantity:Number(f.get('quantity')),...(create?{name:f.get('name'),selling_price:f.get('price'),reorder_level:Number(f.get('reorder'))}:{reason:String(f.get('reason')||'')}),...(!remove&&f.get('cost')?{unit_cost:f.get('cost')}:{})};
+    const serialized=JSON.stringify(body);if(retry.current?.body!==serialized)retry.current={body:serialized,key:crypto.randomUUID()};
+    try {await api(create?'inventory/products':`inventory/products/${editor.item!.id}/${remove?'remove':'receive'}`,'POST',body,retry.current.key);onDone();}
+    catch(e){setError((e as Error).message);}finally{setBusy(false);}
+  }}>
+    {create?<><Field label="Drink name and size"><input name="name" placeholder="Pepsi 500ml" required maxLength={120}/></Field><Field label="Selling price per bottle · Rs"><input name="price" type="number" min="1" step="1" required/></Field><p className="muted small">This drink will also appear in the order menu.</p></>:<p><strong>{editor.item!.name}</strong> · {Number(editor.item!.stock_quantity)} remaining</p>}
+    <Field label={remove?'How many damaged / missing?':create?'How many bottles do you have?':'How many bottles arrived?'}><input name="quantity" type="number" step={1} min={create?0:1} max={remove?Number(editor.item!.stock_quantity):1000000} defaultValue={create?0:undefined} required/></Field>
+    {create&&<Field label="Show low stock at"><input name="reorder" type="number" min={0} max={1000000} step={1} defaultValue={5} required/></Field>}
+    {!remove&&<details><summary>Purchase cost (optional)</summary><Field label="Purchase price per bottle · Rs"><input name="cost" type="number" min={0} step="1"/></Field></details>}
+    {remove&&<Field label="Reason"><input name="reason" placeholder="Broken bottles" required minLength={3} maxLength={1000}/></Field>}
+    {error&&<p role="alert" className="error">{error}</p>}
+    <button className="full" disabled={busy}>{busy?'Saving…':create?'Add drink':remove?'Remove quantity':'Add stock'}</button>
+  </form>;
+}
