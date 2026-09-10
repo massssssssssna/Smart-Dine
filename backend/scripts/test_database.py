@@ -40,3 +40,7 @@ def main():
         if created:
             admin.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name)))
         admin.close()
+
+
+if __name__ == "__main__":
+    main()
