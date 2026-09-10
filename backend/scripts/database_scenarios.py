@@ -71,3 +71,42 @@ def run_scenarios(conn):
         print("PASS: financial totals, delivery costs, reports, recommendations, audit lookup, session revocation")
     finally:
         conn.execute("rollback")
+
+
+def run_concurrency(options):
+    with psycopg.connect(**options, autocommit=True) as setup:
+        actor, ingredient, dish = fixtures(setup)
+        orders = [command(setup, "order_create", {"items": [{"menu_item_id": dish, "quantity": 1}]})["id"] for _ in range(2)]
+    barrier = Barrier(2)
+
+    def prepare(order_id):
+        with psycopg.connect(**options, autocommit=True) as conn:
+            claims(conn, actor)
+            conn.execute("set role authenticated")
+            barrier.wait(timeout=10)
+            try:
+                command(conn, "order_transition", {"id": order_id, "expected_version": 1, "status": "preparing"})
+                return "prepared"
+            except psycopg.errors.SerializationFailure:
+                return "insufficient_stock"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(prepare, orders))
+    assert sorted(results) == ["insufficient_stock", "prepared"], results
+    with psycopg.connect(**options, autocommit=True) as conn:
+        assert conn.execute("select stock_quantity from private.ingredients where id=%s", (ingredient,)).fetchone()[0] == 4
+        claims(conn, actor)
+        assert conn.execute("select count(*) from private.order_consumptions").fetchone()[0] == 1
+    barrier = Barrier(2)
+
+    def duplicate(_):
+        with psycopg.connect(**options, autocommit=True) as conn:
+            claims(conn, actor)
+            conn.execute("set role authenticated")
+            barrier.wait(timeout=10)
+            return command(conn, "order_create", {"items": [{"menu_item_id": dish, "quantity": 1}]}, "concurrent-duplicate")["id"]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        ids = list(pool.map(duplicate, range(2)))
+    assert ids[0] == ids[1], ids
+    print("PASS: competing preparations preserve nonnegative stock; simultaneous retries create one order")
