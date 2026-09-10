@@ -81,3 +81,74 @@ def monthly_interval(
         "method": "weekly_residual_block_bootstrap", "samples": samples,
         "interpretation": "Estimated prediction interval; empirical coverage is not guaranteed.",
     }
+
+
+def forecast_item(menu_item_id: str, rows: list[dict[str, Any]], as_of: date) -> dict[str, Any]:
+    """Use six complete calendar months; optionally extend through contiguous closed days."""
+    first_month = month_shift(as_of, -6)
+    current_month = as_of.replace(day=1)
+    complete_end = current_month - timedelta(days=1)
+    target_start = month_shift(as_of, 1)
+    target_days = calendar.monthrange(target_start.year, target_start.month)[1]
+    target_end = target_start + timedelta(days=target_days - 1)
+    base = {
+        "menu_item_id": str(menu_item_id), "model_version": VERSION,
+        "target_start": target_start.isoformat(), "target_end": target_end.isoformat(),
+        "as_of": as_of.isoformat(), "timezone": "Asia/Karachi",
+    }
+    mapping: dict[date, float] = {}
+    for row in rows:
+        day = date.fromisoformat(str(row["day"]))
+        if day in mapping:
+            raise ValueError("Duplicate daily observations")
+        quantity = float(row["quantity"])
+        if quantity < 0 or not np.isfinite(quantity):
+            raise ValueError("Demand quantity must be nonnegative and finite")
+        if row.get("covered", True):
+            mapping[day] = quantity
+    expected = [stamp.date() for stamp in pd.date_range(first_month, complete_end, freq="D")]
+    missing = [day.isoformat() for day in expected if day not in mapping]
+    if missing:
+        return {
+            **base, "status": "insufficient_history", "required_complete_months": 6,
+            "required_start": first_month.isoformat(), "required_end": complete_end.isoformat(),
+            "missing_days": len(missing), "first_missing_day": missing[0],
+        }
+    cutoff = complete_end
+    while cutoff + timedelta(days=1) < as_of and cutoff + timedelta(days=1) in mapping:
+        cutoff += timedelta(days=1)
+        expected.append(cutoff)
+    values = np.asarray([mapping[day] for day in expected], dtype=float)
+    naive_metrics, naive_residuals = _validation(values, "weekly_seasonal_naive")
+    method, metrics, residuals = "weekly_seasonal_naive", naive_metrics, naive_residuals
+    candidates = [{"model": method, **naive_metrics}]
+    try:
+        ets_metrics, ets_residuals = _validation(values, "damped_weekly_ets")
+        candidates.append({"model": "damped_weekly_ets", **ets_metrics})
+        if ets_metrics["mae"] < naive_metrics["mae"] - 1e-9:
+            method, metrics, residuals = "damped_weekly_ets", ets_metrics, ets_residuals
+    except (ValueError, ArithmeticError, np.linalg.LinAlgError):
+        candidates.append({"model": "damped_weekly_ets", "status": "fit_failed"})
+    horizon = (target_end - cutoff).days
+    try:
+        prediction = _predict(method, values, horizon)
+    except (ValueError, ArithmeticError, np.linalg.LinAlgError):
+        method, metrics, residuals = "weekly_seasonal_naive", naive_metrics, naive_residuals
+        prediction = _naive(values, horizon)
+    offset = (target_start - cutoff).days - 1
+    target = prediction[offset:offset + target_days]
+    interval = monthly_interval(prediction, residuals, offset, target_days)
+    return {
+        **base, "status": "completed", "model": method,
+        "training_start": first_month.isoformat(), "training_end": cutoff.isoformat(),
+        "training_days": len(values), "source_coverage": "verified_complete_days",
+        "monthly_quantity": float(target.sum()), "prediction_interval": interval,
+        "uncertainty_status": "estimated" if interval else "insufficient_evidence",
+        "metrics": metrics, "candidates": candidates,
+        "parameters": {"seasonal_periods": 7, "trend": "add", "damped_trend": True}
+        if method == "damped_weekly_ets" else {"seasonal_periods": 7},
+        "daily": [
+            {"day": (target_start + timedelta(days=i)).isoformat(), "quantity": float(value)}
+            for i, value in enumerate(target)
+        ],
+    }
