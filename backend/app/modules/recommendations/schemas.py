@@ -48,3 +48,45 @@ class MenuChange(RequestModel):
     category: str | None = Field(default=None, min_length=1, max_length=80)
     is_active: bool | None = None
     packaging_cost: Money | None = None
+
+    @model_validator(mode="after")
+    def has_change(self):
+        if not self.model_dump(exclude_none=True):
+            raise ValueError("At least one menu change is required.")
+        return self
+
+
+class TaskChange(RequestModel):
+    instructions: str = Field(min_length=3, max_length=5000)
+
+
+class PriceRecommendation(RecommendationBase):
+    action_type: Literal["price_update"]
+    target_id: UUID
+    expected_target_version: Version
+    proposed_change: PriceChange
+
+
+class RecipeRecommendation(RecommendationBase):
+    action_type: Literal["recipe_update"]
+    target_id: UUID
+    expected_target_version: Version
+    proposed_change: RecipeChange
+
+
+class MenuRecommendation(RecommendationBase):
+    action_type: Literal["menu_update"]
+    target_id: UUID
+    expected_target_version: Version
+    proposed_change: MenuChange
+
+
+class TaskRecommendation(RecommendationBase):
+    action_type: Literal["marketing", "reorder"]
+    proposed_change: TaskChange
+
+
+RecommendationCreate = Annotated[
+    PriceRecommendation | RecipeRecommendation | MenuRecommendation | TaskRecommendation,
+    Field(discriminator="action_type"),
+]
