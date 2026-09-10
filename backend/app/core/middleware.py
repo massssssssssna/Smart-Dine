@@ -60,3 +60,18 @@ class RequestGuards:
             if not message.get("more_body", False):
                 break
         index = 0
+
+        async def replay():
+            nonlocal index
+            if index < len(chunks):
+                result = chunks[index]
+                index += 1
+                return result
+            return await receive()
+
+        async def with_id(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = list(message.get("headers", [])) + [(b"x-request-id", request_id.encode())]
+            await send(message)
+
+        await self.app(scope, replay, with_id)
