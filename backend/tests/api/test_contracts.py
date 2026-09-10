@@ -112,3 +112,109 @@ def test_order_rejects_client_price_or_cost_injection(api, extra):
                            json={"items": [{"menu_item_id": ITEM_ID, "quantity": 1, **extra}]})
     assert response.status_code == 422
     gateway.command.assert_not_awaited()
+
+
+def test_order_forwards_decimal_without_float_rounding(api):
+    client, gateway, _, _ = api
+    response = client.post("/api/v1/orders", headers=HEADERS, json={
+        "items": [{"menu_item_id": ITEM_ID, "quantity": 2}], "discount": "0.01", "platform_fee": "10.23"})
+    assert response.status_code == 201
+    operation, data, key = gateway.command.await_args.args
+    assert operation == "order_create" and key == HEADERS["Idempotency-Key"]
+    assert data["discount"] == "0.01" and data["platform_fee"] == "10.23"
+
+
+def test_staff_cannot_receive_costs_on_mutation(api):
+    client, gateway, actor, _ = api
+    actor.role = "staff"
+    gateway.command.return_value = {"id": ORDER_ID, "status": "preparing", "ingredient_cost": "3.21",
+                                    "items": [{"menu_item_id": ITEM_ID, "price_snapshot": "20.00",
+                                               "ingredient_cost_snapshot": "3.21", "packaging_cost_snapshot": "1.00"}]}
+    response = client.post(f"/api/v1/orders/{ORDER_ID}/status", headers=HEADERS,
+                           json={"expected_version": 1, "status": "preparing"})
+    assert response.status_code == 200
+    assert "ingredient_cost" not in response.json()
+    assert response.json()["items"] == [{"menu_item_id": ITEM_ID, "price_snapshot": "20.00"}]
+
+
+@pytest.mark.parametrize("body", [
+    {"ingredient_id": ITEM_ID, "kind": "purchase", "quantity": "2", "reason": "Receipt"},
+    {"ingredient_id": ITEM_ID, "kind": "wastage", "quantity": "-1", "reason": "Spoiled"},
+    {"ingredient_id": ITEM_ID, "kind": "adjustment", "quantity": "0", "reason": "Count"},
+    {"ingredient_id": ITEM_ID, "kind": "consumption", "quantity": "2", "reason": "Bypass order"},
+    {"ingredient_id": ITEM_ID, "kind": "adjustment", "quantity": "1", "unit_cost": "999", "reason": "Count"},
+])
+def test_invalid_inventory_requests_never_reach_database(api, body):
+    client, gateway, _, _ = api
+    response = client.post("/api/v1/inventory/transactions", headers=HEADERS, json=body)
+    assert response.status_code == 422
+    gateway.command.assert_not_awaited()
+
+
+def test_cancellation_requires_reason_and_version(api):
+    client, gateway, _, _ = api
+    response = client.post(f"/api/v1/orders/{ORDER_ID}/status", headers=HEADERS,
+                           json={"expected_version": 1, "status": "cancelled"})
+    assert response.status_code == 422
+    gateway.command.assert_not_awaited()
+
+
+@pytest.mark.parametrize("dates", ["start_date=2026-02-01&end_date=2026-01-01", "start_date=2020-01-01&end_date=2026-01-01"])
+def test_invalid_reporting_period_rejected(api, dates):
+    client, gateway, _, _ = api
+    assert client.get(f"/api/v1/analytics/summary?{dates}").status_code == 422
+    gateway.read.assert_not_awaited()
+
+
+def test_database_conflict_is_readable_and_keeps_request_id(api):
+    client, gateway, _, _ = api
+    gateway.command.side_effect = AppError("40001", "The record has changed; reload it.", 409)
+    response = client.post(f"/api/v1/orders/{ORDER_ID}/status", headers=HEADERS,
+                           json={"expected_version": 1, "status": "preparing"})
+    assert response.status_code == 409
+    assert response.json()["code"] == "40001"
+    assert response.json()["request_id"]
+
+
+def test_public_review_receipt_excludes_private_order_information(api):
+    client, gateway, _, _ = api
+    token = "z" * 64
+    gateway.service.return_value = {"id": ORDER_ID, "order_id": ITEM_ID, "secret": "do-not-return"}
+    response = client.post("/api/v1/reviews/submit", json={"token": token, "rating": 4, "comment": "Tasty food"})
+    assert response.status_code == 201
+    assert response.json() == {"id": ORDER_ID, "status": "received"}
+    assert gateway.service.await_args.args[1]["token"] == token
+
+
+def test_validation_never_echoes_secrets(api):
+    client, _, _, _ = api
+    secret = "SuperPrivateSecret_123"
+    response = client.post("/api/v1/auth/login", json={"email": "invalid", "password": secret})
+    assert response.status_code == 422
+    assert secret not in response.text
+
+
+def test_public_signup_route_does_not_exist(api):
+    client, _, _, _ = api
+    assert client.post("/api/v1/auth/signup", json={}).status_code == 404
+
+
+def test_recipe_cannot_repeat_ingredient(api):
+    client, gateway, _, _ = api
+    response = client.put(f"/api/v1/recipes/{ITEM_ID}", headers=HEADERS, json={
+        "expected_version": 1, "ingredients": [{"ingredient_id": ORDER_ID, "quantity": "1"},
+                                                {"ingredient_id": ORDER_ID, "quantity": "2"}]})
+    assert response.status_code == 422
+    gateway.command.assert_not_awaited()
+
+
+def test_recommendation_requires_typed_change_and_record_version(api):
+    client, gateway, _, _ = api
+    response = client.post("/api/v1/recommendations", headers=HEADERS, json={
+        "action_type": "price_update", "target_id": ITEM_ID,
+        "title": "Change price", "description": "Reasoned price test",
+        "evidence": [{"source": "analytics", "reference": "period-1", "summary": "Low margin"}],
+        "proposed_change": {"sql": "update menu_items set selling_price=0"},
+    })
+    assert response.status_code == 422
+    gateway.command.assert_not_awaited()
