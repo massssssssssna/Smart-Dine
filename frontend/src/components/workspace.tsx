@@ -413,3 +413,243 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                   {!active.length && <Empty>No open orders on this page.</Empty>}
                 </div>
               )}
+
+              <div className="pagination">
+                <span>{total} orders · Showing {offset + Math.min(1, orders.length)}–{offset + orders.length}</span>
+                <button className="soft" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 100))}>Previous</button>
+                <button className="soft" disabled={offset + 100 >= total} onClick={() => setOffset(offset + 100)}>Next</button>
+              </div>
+              <section className="service-flow panel"><div className="panel-head"><h3>Service Station Flow</h3><span className="muted small">{active.length} open orders in view</span></div><div className="flow-track">{['pending','preparing','ready','completed','cancelled'].map(status => {const count=orders.filter(o=>o.status===status).length;return count>0?<span key={status} className={status} style={{flex:count}} title={`${status}: ${count}`}/>:null;})}</div><div className="flow-legend">{['pending','preparing','ready','completed','cancelled'].map(status=><span key={status}><i className={status}/>{status} ({orders.filter(o=>o.status===status).length})</span>)}</div></section>
+            </>
+          )}
+
+          {tab === 'staff' && (
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <h2>Your team</h2>
+                  <p className="muted">Manage accounts and station assignments.</p>
+                </div>
+                <button onClick={() => setEditor({ kind: 'staff' })}><Plus size={16} /> Add staff</button>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Station</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {staff.filter(s => s.role === 'staff').map(s => (
+                      <tr key={s.id}>
+                        <td><strong>{s.full_name}</strong></td>
+                        <td>{s.email}</td>
+                        <td>
+                          <Badge status={s.role === 'manager' ? 'manager' : s.staff_type === 'kitchen' ? 'preparing' : 'ready'} />{' '}
+                          <span style={{ marginLeft: '0.4rem', fontSize: '0.85rem' }}>
+                            {s.role === 'manager' ? 'General Manager' : s.staff_type === 'cashier' ? 'Cashier / Billing' : s.staff_type === 'kitchen' ? 'Kitchen (KDS)' : 'Waiter (Floor)'}
+                          </span>
+                        </td>
+                        <td><Badge status={s.is_active ? 'active' : 'inactive'} /></td>
+                        <td className="row-actions">
+                          <button className="soft" onClick={() => setEditor({ kind: 'staff', item: s })}>Edit station</button>
+                          <button className="soft" onClick={() => setEditor({ kind: 'credentials', item: s })}>Reset password</button>
+                          {s.id !== me?.id &&
+                            (s.is_active ? (
+                              <button
+                                className="danger-ghost"
+                                disabled={busy}
+                                onClick={() => {
+                                  confirm({title:'Deactivate staff?',description:`${s.full_name} will no longer be able to sign in. You can reactivate this account later.`,label:'Deactivate',onConfirm:async()=>{
+                                      await api('users/' + s.id, 'PUT', {
+                                        full_name: s.full_name,
+                                        role: s.role,
+                                        staff_type: s.staff_type,
+                                        is_active: false,
+                                        expected_version: s.version,
+                                      }, crypto.randomUUID());
+                                      await load();
+                                  }});
+                                }}
+                              >
+                                Deactivate
+                              </button>
+                            ) : (
+                              <button
+                                className="soft"
+                                disabled={busy}
+                                onClick={() =>
+                                  void action(() =>
+                                    api('users/' + s.id, 'PUT', {
+                                      full_name: s.full_name,
+                                      role: s.role,
+                                      staff_type: s.staff_type,
+                                      is_active: true,
+                                      expected_version: s.version,
+                                    }, crypto.randomUUID())
+                                  )
+                                }
+                              >
+                                Reactivate
+                              </button>
+                            ))}
+                          <button className="danger-ghost" disabled={busy} onClick={() => {
+                            confirm({title:'Delete staff account?',description:`${s.full_name}'s login will be permanently removed. Past orders will be kept.`,label:'Delete staff',onConfirm:async()=>{await api('users/' + s.id, 'DELETE', undefined, crypto.randomUUID());await load();}});
+                          }}>Delete staff</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {tab === 'menu' && (
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <h2>Menu</h2>
+                  <p className="muted">Kitchen dishes stay available. Manage bottle quantities in Inventory.</p>
+                </div>
+                <button onClick={() => setEditor({ kind: 'menu' })}><Plus size={16} /> Add dish</button>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Dish</th>
+                      <th>Category</th>
+                      <th>Price</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {menu.map(m => (
+                      <tr key={m.id}>
+                        <td>{m.name}</td>
+                        <td>{m.category}</td>
+                        <td>{money(m.selling_price)}</td>
+                        <td><Badge status={m.is_active ? 'active' : 'inactive'} /></td>
+                        <td className="row-actions">
+                          <button className="soft" onClick={() => setEditor({ kind: 'menu', item: m })}>Edit</button>
+                          <button className="danger-ghost" disabled={busy} onClick={() => {
+                            confirm({title:'Delete menu item?',description:`${m.name} will be removed from the menu. Past orders will be kept.`,label:'Delete item',onConfirm:async()=>{await api('menu/' + m.id, 'DELETE', { expected_version: m.version }, crypto.randomUUID());await load();}});
+                          }}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!menu.length && <Empty>Add your first dish.</Empty>}
+            </section>
+          )}
+
+          {tab === 'stock' && <StockPanel onChanged={() => void load()} />}
+        </main>
+
+        <footer className="workspace-footer">
+          <span>SMART DINE · SERVICE WITH INTENTION</span>
+          <span>PKR · One restaurant</span>
+        </footer>
+      </div>
+
+      {editor && (
+        <Modal
+          title={
+            editor.kind === 'order'
+              ? editor.item ? 'Order details' : 'Take new order'
+              : editor.kind === 'menu'
+              ? 'Menu item'
+              : editor.kind === 'staff'
+              ? 'Team account'
+              : editor.kind === 'recipe'
+              ? 'Recipe quantities'
+              : 'Account credentials'
+          }
+          onClose={() => setEditor(null)}
+        >
+          {editor.kind === 'order' ? (
+            <OrderForm item={editor.item as Order | undefined} menu={menu} onDone={() => { setEditor(null); void load(); }} />
+          ) : editor.kind === 'menu' ? (
+            <MenuForm item={editor.item as MenuItem | undefined} onDone={() => { setEditor(null); void load(); }} />
+          ) : editor.kind === 'staff' ? (
+            <StaffForm item={editor.item as Profile | undefined} cashierEnabled={me?.cashier_billing_enabled} onDone={() => { setEditor(null); void load(); }} />
+          ) : editor.kind === 'recipe' ? (
+            <RecipeForm item={editor.item as MenuItem} onDone={() => { setEditor(null); void load(); }} />
+          ) : (
+            <CredentialsForm item={editor.item as Profile} onDone={() => { setEditor(null); void load(); }} />
+          )}
+        </Modal>
+      )}
+
+      {cancel && (
+        <Modal title="Cancel order" onClose={() => setCancel(null)}>
+          <form
+            className="modal-form"
+            onSubmit={async e => {
+              e.preventDefault();
+              const reason = String(new FormData(e.currentTarget).get('reason'));
+              if (await transition(cancel, 'cancelled', reason)) setCancel(null);
+            }}
+          >
+            <p>Prepared ingredients will be recorded as a loss. This action cannot be undone.</p>
+            <Field label="Reason"><textarea name="reason" required minLength={3} /></Field>
+            <button className="danger" disabled={busy}>Cancel this order</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function OrderCard({ order: o, busy, onNext, onCancel, onEdit }: { order: Order; busy: boolean; onNext?: () => void; onCancel: () => void; onEdit?: () => void }) {
+  return (
+    <article className={`order-card ${o.status}`}>
+      <div className="card-title">
+        <h3>{o.notes.split('\n')[0] || 'Dining order'}</h3>
+        <Badge status={o.status} />
+      </div>
+      <div className="ticket-meta">
+        <span>#{o.id.slice(0, 6)}</span>
+        <span>
+          <Clock size={12} />
+          {new Date(o.created_at).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Karachi' })}
+        </span>
+      </div>
+      <ul>
+        {o.items.map(i => (
+          <li key={i.menu_item_id}>
+            <b>{i.quantity}×</b>
+            {i.name_snapshot}
+          </li>
+        ))}
+      </ul>
+      {o.notes.includes('\n') && <p className="order-notes">{o.notes.split('\n').slice(1).join('\n')}</p>}
+      <div className="order-total">
+        <span>Total</span>
+        <strong>{money(o.total)}</strong>
+      </div>
+      <div className="card-actions">
+        {onNext && (
+          <button disabled={busy} onClick={onNext}>
+            <Check size={14} /> {labels[nextStatus[o.status]]}
+          </button>
+        )}
+        {onEdit && o.status === 'pending' && (
+          <button className="soft" onClick={onEdit}>Edit</button>
+        )}
+        {['pending', 'preparing'].includes(o.status) && (
+          <button className="danger-ghost" disabled={busy} onClick={onCancel}>Cancel</button>
+        )}
+        {o.status === 'ready' && !onNext && <Badge status="awaiting_payment" />}
+      </div>
+    </article>
+  );
+}
