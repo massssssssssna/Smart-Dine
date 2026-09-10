@@ -66,3 +66,45 @@ class UserService:
                         json.dumps({"full_name": body.full_name}),
                     ),
                 )
+
+        return await self.admin.service("activate_user", {
+            "actor_id": str(actor.id), "provision_id": str(provision_id), "user_id": str(user_id),
+        })
+
+    async def credentials(self, actor, user_id, body):
+        await self._recheck_manager(actor)
+        target = await self.gateway.read("users", {"id": str(user_id)})
+        if target["role"] != "staff":
+            raise AppError("staff_only", "Only branch staff accounts can be managed here.", 403)
+
+        if body.email is None and body.password is None:
+            raise AppError("empty_change", "Enter an email or password.", 422)
+
+        pool = await get_pool()
+        async with pool.connection() as conn:
+            async with conn.transaction():
+                cur = await conn.execute(
+                    "SELECT t.id FROM private.profiles t JOIN private.profiles a ON a.branch_id=t.branch_id "
+                    "WHERE a.id=%s AND a.role='manager' AND a.is_active AND t.id=%s AND t.role='staff' "
+                    "FOR UPDATE OF a,t", (str(actor.id), str(user_id)),
+                )
+                if not await cur.fetchone():
+                    raise AppError("staff_only", "Only your branch staff can be managed.", 403)
+                await conn.execute("SELECT set_config('app.branch_id', (SELECT branch_id::text FROM private.profiles WHERE id=%s), true)", (str(actor.id),))
+                if body.email is not None:
+                    cur = await conn.execute(
+                        "SELECT 1 FROM auth.users WHERE lower(email) = lower(%s) AND id <> %s",
+                        (str(body.email), str(user_id)),
+                    )
+                    if await cur.fetchone():
+                        raise AppError("account_update_failed", "Account update failed; check email availability and password requirements.", 400)
+                    await conn.execute("UPDATE auth.users SET email = lower(%s) WHERE id = %s", (str(body.email), str(user_id)))
+                    await conn.execute("UPDATE private.profiles SET email = lower(%s) WHERE id = %s", (str(body.email), str(user_id)))
+
+                if body.password is not None:
+                    pw_hash = bcrypt.hashpw(body.password.get_secret_value().encode("utf-8"), bcrypt.gensalt(12)).decode("utf-8")
+                    await conn.execute("UPDATE auth.users SET encrypted_password = %s WHERE id = %s", (pw_hash, str(user_id)))
+
+                await conn.execute("DELETE FROM auth.sessions WHERE user_id = %s", (str(user_id),))
+
+        return {"status": "updated", "sign_in_required": True}
