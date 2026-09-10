@@ -49,3 +49,48 @@ begin
 end $$;
 revoke all on function private.command_core(text,jsonb,uuid) from public,anon,authenticated,service_role;
 grant execute on function private.command_core(text,jsonb,uuid) to sd_branch_executor;
+
+alter function private.read_core(text,jsonb) rename to read_core_before_simple_stock;
+create function private.read_core(p_resource text,p_params jsonb default '{}') returns jsonb language plpgsql security definer set search_path='' as $$
+declare result jsonb; total integer; lim integer:=coalesce((p_params->>'limit')::integer,50); offst integer:=coalesce((p_params->>'offset')::integer,0);
+begin
+ if p_resource='stock_products' then
+  perform private.require_actor(true);
+  if lim not between 1 and 200 or offst<0 then raise exception using errcode='22023',message='Invalid pagination';end if;
+  select count(*) into total from private.ingredients i join private.menu_items m on m.stock_ingredient_id=i.id where m.deleted_at is null;
+  select coalesce(jsonb_agg(to_jsonb(t)),'[]') into result from (
+   select i.id,m.id menu_item_id,m.name,i.stock_quantity,i.reorder_level,m.selling_price,
+    coalesce((select sum(quantity) from private.inventory_transactions where ingredient_id=i.id and kind='purchase'),0) received,
+    coalesce((select -sum(quantity) from private.inventory_transactions where ingredient_id=i.id and kind='consumption'),0) used,
+    coalesce((select -sum(quantity) from private.inventory_transactions where ingredient_id=i.id and kind='wastage'),0) removed
+   from private.ingredients i join private.menu_items m on m.stock_ingredient_id=i.id where m.deleted_at is null order by m.name limit lim offset offst
+  ) t;
+  return jsonb_build_object('items',result,'total',total,'limit',lim,'offset',offst);
+ end if;
+ return private.read_core_before_simple_stock(p_resource,p_params);
+end $$;
+alter function private.read_core(text,jsonb) owner to sd_branch_executor;
+revoke all on function private.read_core(text,jsonb) from public,anon,service_role;
+grant execute on function private.read_core(text,jsonb) to authenticated;
+
+-- Keep financial consumers informed when kitchen ingredient costs are not tracked.
+alter table private.order_items add column costing_complete boolean not null default true;
+do $$ declare s text; begin
+ s:=pg_get_functiondef('private.command_core_before_menu_delete(text,jsonb,uuid)'::regprocedure);
+ s:=replace(s,'packaging_cost_snapshot=menu_row.packaging_cost','costing_complete=(menu_row.stock_ingredient_id is not null and exists(select 1 from private.order_consumptions cc where cc.order_item_id=oi.id and cc.unit_cost>0)),packaging_cost_snapshot=menu_row.packaging_cost');
+ execute s;
+ s:=pg_get_functiondef('private.analytics(jsonb)'::regprocedure);
+ -- Preserve established calculations; consumers must label incomplete food costs as estimates.
+ execute 'alter function private.analytics(jsonb) rename to analytics_before_simple_stock';
+end $$;
+create function private.analytics(p_params jsonb) returns jsonb language plpgsql set search_path='' as $$
+declare result jsonb; incomplete boolean;
+begin
+ result:=private.analytics_before_simple_stock(p_params);
+ select exists(select 1 from private.order_items oi join private.orders o on o.id=oi.order_id where o.status='completed' and not oi.costing_complete
+  and (p_params->>'start_date' is null or (o.completed_at at time zone 'Asia/Karachi')::date>=(p_params->>'start_date')::date)
+  and (p_params->>'end_date' is null or (o.completed_at at time zone 'Asia/Karachi')::date<=(p_params->>'end_date')::date)) into incomplete;
+ return result||jsonb_build_object('costing_complete',not incomplete,'costing_note',case when incomplete then 'Kitchen ingredient costs or drink purchase costs are not recorded. Profit figures are incomplete.' else null end);
+end $$;
+revoke all on function private.analytics(jsonb) from public,anon,authenticated,service_role;
+grant execute on function private.analytics(jsonb) to sd_branch_executor;
