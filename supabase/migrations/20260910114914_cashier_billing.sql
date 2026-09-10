@@ -59,3 +59,34 @@ begin
 end $$;
 revoke all on function private.command_core(text,jsonb,uuid) from public,anon,authenticated,service_role;
 grant execute on function private.command_core(text,jsonb,uuid) to sd_branch_executor;
+
+alter function private.read_core(text,jsonb) rename to read_core_before_cashier;
+create function private.read_core(p_resource text,p_params jsonb default '{}') returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=private.require_actor(false); prof private.profiles; o private.orders; result jsonb; total integer;
+ lim integer:=coalesce((p_params->>'limit')::integer,50); offst integer:=coalesce((p_params->>'offset')::integer,0); state text:=coalesce(p_params->>'payment_status','unpaid');
+begin
+ select * into prof from private.profiles where id=actor;
+ if prof.role='staff' and prof.staff_type='cashier' and p_resource not in ('me','profile','orders','bills','receipt') then raise exception using errcode='42501',message='Cashier access is limited to bills';end if;
+ if p_resource in ('me','profile') then return private.read_core_before_cashier(p_resource,p_params)||jsonb_build_object('cashier_billing_enabled',true);end if;
+ if p_resource in ('bills','receipt') then
+  if prof.role<>'manager' and prof.staff_type<>'cashier' then raise exception using errcode='42501',message='Cashier access required';end if;
+  if p_resource='receipt' then
+   select * into o from private.orders where id=(p_params->>'id')::uuid;
+   if not found then raise exception using errcode='P0002',message='Bill not found';end if;
+   result:=private.order_json(o.id,false)||jsonb_build_object('receipt_number','SD-'||o.id::text,'branch_name',(select name from private.branches where id=o.branch_id),'payment_status',case when o.status='completed' then 'paid' when o.status='cancelled' then 'cancelled' else 'unpaid' end);
+   return private.json_decimals(result);
+  end if;
+  if lim not between 1 and 200 or offst<0 or state not in ('unpaid','paid','all') then raise exception using errcode='22023',message='Invalid bill filter';end if;
+  select count(*) into total from private.orders where (state='all' or (state='paid' and status='completed') or (state='unpaid' and status in ('pending','preparing','ready')));
+  select coalesce(jsonb_agg(private.order_json(t.id,false) order by t.created_at desc),'[]') into result from (
+   select id,created_at from private.orders where (state='all' or (state='paid' and status='completed') or (state='unpaid' and status in ('pending','preparing','ready'))) order by created_at desc,id limit lim offset offst
+  ) t;
+  return private.json_decimals(jsonb_build_object('items',result,'total',total,'limit',lim,'offset',offst));
+ end if;
+ return private.read_core_before_cashier(p_resource,p_params);
+end $$;
+alter function private.read_core(text,jsonb) owner to sd_branch_executor;
+revoke all on function private.read_core(text,jsonb) from public,anon,service_role;
+grant execute on function private.read_core(text,jsonb) to authenticated;
+-- Old entry points must not bypass the new cashier restrictions.
+revoke all on function private.read_core_before_cashier(text,jsonb),private.read_core_before_simple_stock(text,jsonb) from public,anon,authenticated,service_role;
