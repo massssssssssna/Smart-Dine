@@ -1,0 +1,24 @@
+.toolbar,.filters,.buttons{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.toolbar{justify-content:space-between;margin-bottom:24px}
+.receipt{padding:26px;background:#fff;color:#15241d}
+.receipt header{text-align:center;border-bottom:1px dashed #b9c8bf;padding-bottom:14px;margin-bottom:14px}
+.receipt header h2{margin-bottom:4px}.receipt header p{margin-bottom:8px}.receipt header strong{letter-spacing:2px}
+.billId{font-size:10px;overflow-wrap:anywhere}.receipt p{margin-bottom:8px;font-size:12px}
+.receipt th,.receipt td{padding:10px 5px;font-size:11px}.receipt th{background:#f3f7f4;letter-spacing:0}
+.receipt dl{margin:18px 0}.receipt dl>div{display:flex;justify-content:space-between;gap:14px;margin:8px 0}.receipt dd{margin:0;text-align:right}
+.total{border-top:1px solid #b9c8bf;padding-top:12px;font-weight:700;font-size:18px}
+.thanks{text-align:center;border-top:1px dashed #b9c8bf;padding-top:16px}
+.controls{padding:0 26px 26px}.buttons{justify-content:flex-end}.buttons button{flex:1}
+@media print{
+ :global(.station-cashier>.sidebar),:global(.station-cashier>.workspace){display:none!important}
+ :global(.station-cashier){min-height:0!important;height:auto!important}
+ :global(body *){visibility:hidden!important}
+ :global(dialog[open]){position:absolute!important;inset:0!important;width:100%!important;max-width:none!important;max-height:none!important;height:auto!important;overflow:visible!important;border:0!important;box-shadow:none!important;margin:0!important}
+ :global(dialog::backdrop){background:transparent!important;backdrop-filter:none!important}
+ :global(dialog .modal-head),.controls{display:none!important}
+ .receipt,.receipt *{visibility:visible!important}
+ .receipt{width:76mm;max-width:100%;padding:4mm;margin:0 auto;position:absolute;top:0;left:0;right:0}
+ .receipt table{table-layout:fixed}.receipt td{overflow-wrap:anywhere}.receipt th:first-child{width:36%}
+ :global(body){background:white!important}
+ @page{margin:5mm;size:auto}
+}
