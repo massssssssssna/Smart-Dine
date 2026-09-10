@@ -363,3 +363,220 @@ create function private.read_intelligence(p_resource text,p_params jsonb) return
 create function private.command_intelligence(p_operation text,p_payload jsonb,p_actor uuid) returns jsonb language plpgsql set search_path='' as $$ begin raise exception using errcode='22023',message='Unknown operation'; end $$;
 create function private.service_intelligence(p_operation text,p_payload jsonb) returns jsonb language plpgsql set search_path='' as $$ begin raise exception using errcode='22023',message='Unknown service operation'; end $$;
 create function private.enqueue_job(p_kind text,p_payload jsonb,p_dedup_key text,p_actor uuid) returns uuid language plpgsql set search_path='' as $$ begin raise exception using errcode='55000',message='Intelligence migration must be installed'; end $$;
+
+create function private.order_json(p_id uuid,p_manager boolean) returns jsonb language sql stable set search_path='' as $$
+ select (to_jsonb(o) - case when p_manager then '{}'::text[] else array['platform_fee','delivery_cost'] end) || jsonb_build_object(
+ 'subtotal',(select coalesce(sum(quantity*price_snapshot),0) from private.order_items where order_id=o.id),
+ 'total',(select coalesce(sum(quantity*price_snapshot),0) from private.order_items where order_id=o.id)-o.discount+o.tax,'items',
+ coalesce((select jsonb_agg(to_jsonb(i)-case when p_manager then '{}'::text[] else array['ingredient_cost_snapshot','packaging_cost_snapshot','fee_allocated','recipe_version'] end order by i.id) from private.order_items i where i.order_id=o.id),'[]'::jsonb))
+ from private.orders o where o.id=p_id
+$$;
+
+create function private.analytics(p_params jsonb) returns jsonb language plpgsql set search_path='' as $$
+declare d1 date:=coalesce((p_params->>'start_date')::date,(now() at time zone 'Asia/Karachi')::date-29);
+ d2 date:=coalesce((p_params->>'end_date')::date,(now() at time zone 'Asia/Karachi')::date);
+ rev numeric; direct numeric; exp numeric; losses numeric; cancel_losses numeric; items jsonb; overall numeric; med numeric;
+ report text:=coalesce(p_params->>'report','summary'); result jsonb;
+begin
+ perform private.require_actor(true);
+ if d2<d1 or d2-d1>366 then raise exception using errcode='22023',message='Report range must be ordered and at most 366 days'; end if;
+ if report not in ('summary','items','matrix','sales','stock_losses','review_aspects') then raise exception using errcode='22023',message='Unknown report'; end if;
+ if report='review_aspects' then
+ select coalesce(jsonb_agg(to_jsonb(q)),'[]') into items from (
+ select a.value->>'aspect' as aspect,a.value->>'sentiment' as sentiment,count(*) as mentions
+ from private.reviews r join private.review_analyses ra on ra.review_id=r.id
+ cross join lateral jsonb_array_elements(ra.result->'aspects') a(value)
+ where (r.created_at at time zone 'Asia/Karachi')::date between d1 and d2 group by 1,2 order by 1,2) q;
+ return jsonb_build_object('start_date',d1,'end_date',d2,'items',items,
+ 'reviews_received',(select count(*) from private.reviews where (created_at at time zone 'Asia/Karachi')::date between d1 and d2),
+ 'reviews_analyzed',(select count(*) from private.reviews where analysis_status='completed' and (created_at at time zone 'Asia/Karachi')::date between d1 and d2));
+ end if;
+ if report='sales' then
+ select coalesce(jsonb_agg(to_jsonb(q) order by q.day),'[]') into items from (
+ select (o.completed_at at time zone 'Asia/Karachi')::date as day,count(distinct o.id) as completed_orders,
+ sum(i.quantity) as quantity,round(sum(i.quantity*i.price_snapshot-i.discount_allocated),2) as net_revenue,
+ round(sum(i.quantity*i.price_snapshot-i.discount_allocated-i.ingredient_cost_snapshot-i.quantity*i.packaging_cost_snapshot-i.fee_allocated),2) as contribution_margin
+ from private.orders o join private.order_items i on i.order_id=o.id where o.status='completed'
+ and (o.completed_at at time zone 'Asia/Karachi')::date between d1 and d2 group by 1) q;
+ return jsonb_build_object('start_date',d1,'end_date',d2,'currency','PKR','items',items,'source','completed_orders');
+ end if;
+ select coalesce(sum(i.quantity*i.price_snapshot-i.discount_allocated),0),coalesce(sum(i.ingredient_cost_snapshot+i.quantity*i.packaging_cost_snapshot+i.fee_allocated),0)
+ into rev,direct from private.order_items i join private.orders o on o.id=i.order_id where o.status='completed' and (o.completed_at at time zone 'Asia/Karachi')::date between d1 and d2;
+ select coalesce(sum(amount),0) into exp from private.expenses where voided_at is null and incurred_on between d1 and d2;
+ select coalesce(sum(-value),0) into losses from private.inventory_transactions where quantity<0 and kind in ('wastage','adjustment') and (created_at at time zone 'Asia/Karachi')::date between d1 and d2;
+ select coalesce(sum(i.ingredient_cost_snapshot+i.quantity*i.packaging_cost_snapshot+i.fee_allocated),0) into cancel_losses from private.order_items i join private.orders o on o.id=i.order_id where o.status='cancelled' and o.prepared_at is not null and (o.cancelled_at at time zone 'Asia/Karachi')::date between d1 and d2;
+ overall:=case when rev>0 then (rev-direct)/rev*100 else 0 end;
+ with sales as(select i.menu_item_id,sum(i.quantity) qty from private.order_items i join private.orders o on o.id=i.order_id where o.status='completed' and (o.completed_at at time zone 'Asia/Karachi')::date between d1 and d2 group by 1)
+ select coalesce(percentile_cont(0.5) within group(order by qty),0) into med from sales;
+ with sales as(select i.menu_item_id,sum(i.quantity) quantity,sum(i.quantity*i.price_snapshot-i.discount_allocated) net_revenue,
+ sum(i.quantity*i.price_snapshot-i.discount_allocated-i.ingredient_cost_snapshot-i.quantity*i.packaging_cost_snapshot-i.fee_allocated) contribution_margin
+ from private.order_items i join private.orders o on o.id=i.order_id where o.status='completed' and (o.completed_at at time zone 'Asia/Karachi')::date between d1 and d2 group by 1)
+ select coalesce(jsonb_agg(jsonb_build_object('menu_item_id',m.id,'name',m.name,'quantity',coalesce(s.quantity,0),'net_revenue',coalesce(s.net_revenue,0),'contribution_margin',coalesce(s.contribution_margin,0),
+ 'margin_percent',case when s.net_revenue>0 then round(s.contribution_margin/s.net_revenue*100,2) end,
+ 'matrix',case when s.quantity is null then 'insufficient_sales' else (case when s.quantity>=med then 'high_volume' else 'low_volume' end)||'/'||(case when s.contribution_margin>0 and s.contribution_margin/nullif(s.net_revenue,0)*100>=overall then 'high_margin' else 'low_margin' end) end) order by m.name),'[]') into items from private.menu_items m left join sales s on s.menu_item_id=m.id;
+ result:=jsonb_build_object('start_date',d1,'end_date',d2,'currency','PKR','timezone','Asia/Karachi','net_revenue',round(rev,2),'direct_cost',round(direct,2),'contribution_margin',round(rev-direct,2),
+ 'operating_expenses',exp,'stock_losses',round(losses,2),'cancellation_losses',round(cancel_losses,2),'operating_profit',round(rev-direct-exp-losses-cancel_losses,2),'volume_threshold',med,'margin_threshold',round(overall,2),'items',items);
+ if report='stock_losses' then return jsonb_build_object('start_date',d1,'end_date',d2,'currency','PKR','stock_losses',round(losses,2),'cancellation_losses',round(cancel_losses,2),'total_losses',round(losses+cancel_losses,2)); end if;
+ if report in ('items','matrix') then return jsonb_build_object('start_date',d1,'end_date',d2,'currency','PKR','volume_threshold',med,'margin_threshold',round(overall,2),'items',items); end if;
+ return result;
+end $$;
+
+create function private.read_core(p_resource text,p_params jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path='' as $$
+#variable_conflict use_variable
+declare actor uuid:=private.require_actor(false); mgr boolean; id uuid:=(p_params->>'id')::uuid; lim integer:=coalesce((p_params->>'limit')::int,50); offst integer:=coalesce((p_params->>'offset')::int,0); allrows jsonb; result jsonb;
+begin
+ select role='manager' into mgr from private.profiles where profiles.id=actor;
+ if lim not between 1 and 200 or offst<0 then raise exception using errcode='22023',message='Invalid pagination'; end if;
+ if p_resource in ('me','profile') then return (select to_jsonb(p) from private.profiles p where p.id=actor); end if;
+ if p_resource in ('users','recipes','analytics','reviews','recommendations','audit') then perform private.require_actor(true); end if;
+ if p_resource='analytics' then return private.json_decimals(private.analytics(p_params));
+ elsif p_resource='users' then select coalesce(jsonb_agg(to_jsonb(t) order by t.created_at desc),'[]') into allrows from private.profiles t where id is null or t.id=id;
+ elsif p_resource='menu' then select coalesce(jsonb_agg(to_jsonb(t)-case when mgr then '{}'::text[] else array['packaging_cost'] end order by t.name),'[]') into allrows from private.menu_items t where (id is null or t.id=id) and (mgr or t.is_active);
+ elsif p_resource='recipes' then select jsonb_build_object('id',m.id,'version',m.version,'ingredients',coalesce((select jsonb_agg(jsonb_build_object('ingredient_id',r.ingredient_id,'quantity',r.quantity::text,'name',i.name,'unit',i.unit) order by i.name) from private.recipes r join private.ingredients i on i.id=r.ingredient_id where r.menu_item_id=m.id),'[]')) into result from private.menu_items m where m.id=coalesce(id,(p_params->>'menu_item_id')::uuid); if result is null then raise exception using errcode='P0002',message='Recipe item not found'; end if; return result;
+ elsif p_resource='orders' then select coalesce(jsonb_agg(private.order_json(t.id,mgr) order by t.created_at desc),'[]') into allrows from private.orders t where (id is null or t.id=id) and (p_params->>'status' is null or t.status=p_params->>'status');
+ elsif p_resource='inventory' then select coalesce(jsonb_agg(to_jsonb(t)-case when mgr then '{}'::text[] else array['average_unit_cost'] end order by t.name),'[]') into allrows from private.ingredients t where id is null or t.id=id;
+ elsif p_resource='inventory_transactions' then select coalesce(jsonb_agg(to_jsonb(t)-case when mgr then '{}'::text[] else array['unit_cost','value'] end order by t.created_at desc),'[]') into allrows from private.inventory_transactions t where (id is null or t.id=id) and (p_params->>'ingredient_id' is null or t.ingredient_id=(p_params->>'ingredient_id')::uuid);
+ elsif p_resource='expenses' then select coalesce(jsonb_agg(to_jsonb(t) order by t.created_at desc),'[]') into allrows from private.expenses t where (id is null or t.id=id) and (mgr or t.created_by=actor) and (p_params->>'start_date' is null or t.incurred_on>=(p_params->>'start_date')::date) and (p_params->>'end_date' is null or t.incurred_on<=(p_params->>'end_date')::date);
+ elsif p_resource='reviews' then select coalesce(jsonb_agg(to_jsonb(t) order by t.created_at desc),'[]') into allrows from private.reviews t where (id is null or t.id=id) and (p_params->>'menu_item_id' is null or t.menu_item_id=(p_params->>'menu_item_id')::uuid) and (p_params->>'start_date' is null or (t.created_at at time zone 'Asia/Karachi')::date>=(p_params->>'start_date')::date) and (p_params->>'end_date' is null or (t.created_at at time zone 'Asia/Karachi')::date<=(p_params->>'end_date')::date);
+ elsif p_resource='recommendations' then select coalesce(jsonb_agg(to_jsonb(t) order by t.created_at desc),'[]') into allrows from private.recommendations t where (id is null or t.id=id) and (p_params->>'status' is null or t.status=p_params->>'status');
+ elsif p_resource='audit' then
+ if p_params ? 'event_id' then
+ select to_jsonb(t) into result from private.audit_logs t where t.id=(p_params->>'event_id')::bigint;
+ if result is null then raise exception using errcode='P0002',message='Audit event not found'; end if;
+ return private.json_decimals(result);
+ end if;
+ select coalesce(jsonb_agg(to_jsonb(t) order by t.created_at desc),'[]') into allrows from private.audit_logs t;
+ else return private.json_decimals(private.read_intelligence(p_resource,p_params)); end if;
+ if id is not null then if jsonb_array_length(allrows)=0 then raise exception using errcode='P0002',message='Record not found'; end if; return private.json_decimals(allrows->0); end if;
+ select coalesce(jsonb_agg(value),'[]') into result from (select value from jsonb_array_elements(allrows) with ordinality x(value,n) order by n limit lim offset offst) q;
+ return private.json_decimals(jsonb_build_object('items',result,'total',jsonb_array_length(allrows),'limit',lim,'offset',offst));
+end $$;
+
+create function private.service_core(p_operation text,p_payload jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path='' as $$
+#variable_conflict use_variable
+declare actor uuid:=(p_payload->>'actor_id')::uuid; uid uuid:=(p_payload->>'user_id')::uuid; id uuid; prov private.user_provisioning;
+ tok private.review_tokens; prof private.profiles; result jsonb; email text; fullname text;
+begin
+ perform private.require_service();
+ if p_operation='health' then return jsonb_build_object('schema','smartdine','version',1,'ready',true); end if;
+ if p_operation='bootstrap_manager' then
+ perform pg_advisory_xact_lock(hashtextextended('smartdine:managers',0));
+ if exists(select 1 from private.bootstrap_state) or exists(select 1 from private.profiles where role='manager' and is_active) then raise exception using errcode='40001',message='Manager has already been bootstrapped'; end if;
+ select * into prof from private.profiles where profiles.id=uid for update;
+ if not found then raise exception using errcode='22023',message='Provision the managed Auth user first'; end if;
+ update private.profiles set role='manager',is_active=true,full_name=coalesce(nullif(p_payload->>'full_name',''),full_name),version=version+1,updated_at=now() where profiles.id=uid;
+ insert into private.bootstrap_state(singleton) values(true);
+ perform private.audit(uid,'bootstrap_manager','profiles',uid,to_jsonb(prof),(select to_jsonb(p) from private.profiles p where p.id=uid));
+ return (select to_jsonb(p) from private.profiles p where p.id=uid);
+ elsif p_operation in ('reserve_user','activate_user') then
+ if actor is null or not exists(select 1 from private.profiles where profiles.id=actor and role='manager' and is_active) then raise exception using errcode='42501',message='Active manager required'; end if;
+ if p_operation='reserve_user' then
+ email:=lower(btrim(p_payload->>'email')); fullname:=btrim(p_payload->>'full_name');
+ if email is null or position('@' in email)<2 or fullname is null or length(fullname)=0 or length(coalesce(p_payload->>'request_key','')) not between 1 and 200 then raise exception using errcode='22023',message='Valid email, name and request key required'; end if;
+ perform pg_advisory_xact_lock(hashtextextended('provision:'||email,0));
+ select * into prov from private.user_provisioning where requested_by=actor and request_key=p_payload->>'request_key';
+ if found then
+ if prov.email<>email or prov.full_name<>fullname or prov.role<>p_payload->>'role' then raise exception using errcode='23505',message='Provisioning key payload conflict'; end if;
+ return to_jsonb(prov);
+ end if;
+ if exists(select 1 from private.user_provisioning where user_provisioning.email=email) or exists(select 1 from private.profiles where profiles.email=email) then raise exception using errcode='23505',message='Email already exists or is being provisioned'; end if;
+ insert into private.user_provisioning(email,full_name,role,requested_by,request_key) values(email,fullname,p_payload->>'role',actor,p_payload->>'request_key') returning * into prov;
+ return to_jsonb(prov);
+ else
+ select * into prov from private.user_provisioning where user_provisioning.id=(p_payload->>'provision_id')::uuid for update;
+ if not found or prov.requested_by<>actor then raise exception using errcode='P0002',message='Provisioning request not found'; end if;
+ if prov.status='active' then if prov.user_id<>uid then raise exception using errcode='23505',message='Provisioning user conflict'; end if; return (select to_jsonb(p) from private.profiles p where p.id=uid); end if;
+ select * into prof from private.profiles where profiles.id=uid for update;
+ if not found or lower(prof.email)<>prov.email then raise exception using errcode='22023',message='Auth user must match provisioning email'; end if;
+ update private.profiles set role=prov.role,full_name=prov.full_name,is_active=true,version=version+1,updated_at=now() where profiles.id=uid;
+ update private.user_provisioning set status='active',user_id=uid where user_provisioning.id=prov.id;
+ result:=(select to_jsonb(p) from private.profiles p where p.id=uid); perform private.audit(actor,'activate_user','profiles',uid,to_jsonb(prof),result); return result;
+ end if;
+ elsif p_operation='review_submit' then
+ select * into tok from private.review_tokens where token_hash=encode(extensions.digest(p_payload->>'token','sha256'),'hex') for update;
+ if not found or tok.used_at is not null or tok.expires_at<=now() then raise exception using errcode='22023',message='Review token is invalid, expired or already used'; end if;
+ if p_payload->>'menu_item_id' is not null and not exists(select 1 from private.order_items where order_id=tok.order_id and menu_item_id=(p_payload->>'menu_item_id')::uuid) then raise exception using errcode='22023',message='Review item was not purchased in this order'; end if;
+ insert into private.reviews(order_id,menu_item_id,rating,comment) values(tok.order_id,(p_payload->>'menu_item_id')::uuid,(p_payload->>'rating')::int,p_payload->>'comment') returning reviews.id into id;
+ update private.review_tokens set used_at=now() where review_tokens.id=tok.id;
+ perform private.enqueue_job('review_analysis',jsonb_build_object('review_id',id),'review:'||id::text,null);
+ perform private.audit(null,'review_submit','reviews',id,null,jsonb_build_object('id',id,'order_id',tok.order_id));
+ return jsonb_build_object('id',id,'analysis_status','pending');
+ else return private.json_decimals(private.service_intelligence(p_operation,p_payload)); end if;
+end $$;
+
+create function private.staff_json(p_value jsonb) returns jsonb language plpgsql immutable set search_path='' as $$
+declare k text; v jsonb; r jsonb; begin
+ if jsonb_typeof(p_value)='array' then select coalesce(jsonb_agg(private.staff_json(value)),'[]') into r from jsonb_array_elements(p_value); return r;
+ elsif jsonb_typeof(p_value)='object' then r:='{}'; for k,v in select * from jsonb_each(p_value) loop
+ if k<>all(array['ingredient_cost_snapshot','packaging_cost_snapshot','fee_allocated','recipe_version','average_unit_cost','unit_cost','value','platform_fee','delivery_cost','packaging_cost']) then r:=r||jsonb_build_object(k,private.staff_json(v)); end if;
+ end loop; return r;
+ end if; return p_value; end $$;
+
+create function private.validate_payload(p_value jsonb) returns void language plpgsql immutable set search_path='' as $$
+declare k text; v jsonb; begin
+ if jsonb_typeof(p_value)='array' then for v in select value from jsonb_array_elements(p_value) loop perform private.validate_payload(v); end loop;
+ elsif jsonb_typeof(p_value)='object' then for k,v in select * from jsonb_each(p_value) loop
+ if k=any(array['selling_price','packaging_cost','discount','platform_fee','delivery_cost','tax','amount','quantity','unit_cost','reorder_level']) then
+ if v='null'::jsonb or jsonb_typeof(v) not in ('number','string') or (v#>>'{}')!~'^-?[0-9]+([.][0-9]+)?$' then raise exception using errcode='22023',message='Finite decimal value required for '||k; end if;
+ end if;
+ perform private.validate_payload(v);
+ end loop; end if;
+end $$;
+create function private.required_fields(p_payload jsonb,p_fields text[]) returns void language plpgsql immutable set search_path='' as $$
+declare k text; begin
+ foreach k in array p_fields loop if not (p_payload ? k) or p_payload->k='null'::jsonb or p_payload->>k='' then raise exception using errcode='22023',message='Required field: '||k; end if; end loop;
+end $$;
+
+create function private.execute_command(p_operation text,p_payload jsonb,p_idempotency_key text) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare actor uuid:=private.require_actor(false); h text; prior private.idempotency_records; result jsonb; mgr boolean;
+begin
+ select role='manager' into mgr from private.profiles where id=actor;
+ if p_operation<>all(array['inventory_record','order_create','order_update','order_transition','expense_create','review_token_create']) then perform private.require_actor(true); end if;
+ if p_operation is null or jsonb_typeof(p_payload) is distinct from 'object' or length(coalesce(p_idempotency_key,'')) not between 1 and 200 then raise exception using errcode='22023',message='Operation, object payload and Idempotency-Key required'; end if;
+ perform private.validate_payload(p_payload);
+ case p_operation
+ when 'menu_create' then perform private.required_fields(p_payload,array['name','selling_price']);
+ when 'ingredient_create' then perform private.required_fields(p_payload,array['name','unit']);
+ when 'recipe_set' then perform private.required_fields(p_payload,array['id','expected_version','ingredients']);
+ when 'inventory_record' then perform private.required_fields(p_payload,array['ingredient_id','kind','quantity','reason']);
+ when 'order_create' then perform private.required_fields(p_payload,array['items']);
+ when 'order_transition' then perform private.required_fields(p_payload,array['id','expected_version','status']);
+ when 'expense_create' then perform private.required_fields(p_payload,array['category','amount','incurred_on']);
+ when 'expense_void' then perform private.required_fields(p_payload,array['id','expected_version','reason']);
+ when 'recommendation_create' then perform private.required_fields(p_payload,array['action_type','title','proposed_change','evidence']);
+ when 'menu_update','ingredient_update','order_update','user_update','recommendation_approve','recommendation_apply','recommendation_reject' then perform private.required_fields(p_payload,array['id','expected_version']);
+ else null;
+ end case;
+ h:=encode(extensions.digest(p_payload::text,'sha256'),'hex');
+ perform pg_advisory_xact_lock(hashtextextended(actor::text||':'||p_operation||':'||p_idempotency_key,0));
+ select * into prior from private.idempotency_records where actor_id=actor and operation=p_operation and key=p_idempotency_key;
+ if found then if prior.request_hash<>h then raise exception using errcode='23505',message='Idempotency key was already used with a different payload'; end if; return case when mgr then prior.result else private.staff_json(prior.result) end; end if;
+ result:=private.command_core(p_operation,p_payload,actor);
+ insert into private.idempotency_records(actor_id,operation,key,request_hash,result) values(actor,p_operation,p_idempotency_key,h,result);
+ return result;
+end $$;
+
+create function public.sd_read(p_resource text,p_params jsonb default '{}') returns jsonb
+language sql security invoker set search_path='' as $$ select private.read_core(p_resource,p_params) $$;
+create function public.sd_command(p_operation text,p_payload jsonb,p_idempotency_key text) returns jsonb
+language sql security invoker set search_path='' as $$ select private.execute_command(p_operation,p_payload,p_idempotency_key) $$;
+create function public.sd_service(p_operation text,p_payload jsonb default '{}') returns jsonb
+language sql security invoker set search_path='' as $$ select private.service_core(p_operation,p_payload) $$;
+
+-- No business tables are accessible directly, even through accidental schema exposure.
+do $$ declare t record; begin
+ for t in select tablename from pg_tables where schemaname='private' loop
+ execute format('alter table private.%I enable row level security',t.tablename);
+ end loop;
+end $$;
+revoke all on all tables in schema private from public,anon,authenticated,service_role;
+revoke all on all sequences in schema private from public,anon,authenticated,service_role;
+revoke execute on all functions in schema private from public,anon,authenticated,service_role;
+grant execute on function private.read_core(text,jsonb),private.execute_command(text,jsonb,text) to authenticated;
+grant execute on function private.service_core(text,jsonb) to service_role;
+revoke execute on function public.sd_read(text,jsonb),public.sd_command(text,jsonb,text),public.sd_service(text,jsonb) from public,anon,authenticated,service_role;
+grant execute on function public.sd_read(text,jsonb),public.sd_command(text,jsonb,text) to authenticated;
+grant execute on function public.sd_service(text,jsonb) to service_role;
