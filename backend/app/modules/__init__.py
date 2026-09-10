@@ -1,0 +1,1 @@
+"""SmartDine business capabilities."""
