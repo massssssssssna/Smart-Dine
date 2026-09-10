@@ -140,3 +140,131 @@ def test_branches_and_staff_lifecycle(db):
     assert c.execute('select count(*) from auth.users where id=%s',(s1,)).fetchone()[0]==0
     assert c.execute('select created_by from private.orders where id=%s',(order['id'],)).fetchone()[0] is None
     assert c.execute("select count(*) from private.audit_logs where action='staff_deleted'").fetchone()[0]==1
+
+
+def test_menu_deletion_preserves_history_and_permissions(db):
+    c=db
+    manager=make_manager(c)
+    other=make_manager(c)
+    staff=make_staff(c,manager)
+    claims(c,manager)
+    dish=rpc(c,'menu_create',dict(name='Delete test',selling_price='250'))
+    claims(c,other)
+    denied(c,lambda:rpc(c,'menu_delete',dict(id=dish['id'],expected_version=1)))
+    claims(c,staff)
+    denied(c,lambda:rpc(c,'menu_delete',dict(id=dish['id'],expected_version=1)))
+    order=rpc(c,'order_create',dict(items=[dict(menu_item_id=dish['id'],quantity=1)]))
+    claims(c,manager)
+    denied(c,lambda:rpc(c,'menu_delete',dict(id=dish['id'],expected_version=1)))
+    rpc(c,'order_transition',dict(id=order['id'],expected_version=1,status='cancelled',reason='Test cancellation'))
+    denied(c,lambda:rpc(c,'menu_delete',dict(id=dish['id'],expected_version=999)))
+    key=str(uuid4())
+    data=json.dumps(dict(id=dish['id'],expected_version=1))
+    for _ in range(2):
+        assert c.execute("select public.sd_command('menu_delete',%s::jsonb,%s)",(data,key)).fetchone()[0]['status']=='deleted'
+    assert read(c,'menu')['items']==[]
+    denied(c,lambda:read(c,'menu',dict(id=dish['id'])))
+    denied(c,lambda:rpc(c,'menu_update',dict(id=dish['id'],expected_version=2,is_active=True)))
+    denied(c,lambda:rpc(c,'order_create',dict(items=[dict(menu_item_id=dish['id'],quantity=1)])))
+    assert read(c,'orders')['items'][0]['items'][0]['name_snapshot']=='Delete test'
+    assert rpc(c,'menu_create',dict(name='Delete test',selling_price='300'))['id']!=dish['id']
+
+
+def test_simple_bottles_and_unlimited_kitchen_dishes(db):
+    c=db;manager=make_manager(c);other=make_manager(c);staff=make_staff(c,manager)
+    claims(c,manager)
+    food=rpc(c,'menu_create',dict(name='Biryani',selling_price='450'))
+    # No recipe and no kitchen ingredients are required.
+    food_order=rpc(c,'order_create',dict(items=[dict(menu_item_id=food['id'],quantity=100)]))
+    assert rpc(c,'order_transition',dict(id=food_order['id'],expected_version=1,status='preparing'))['status']=='preparing'
+    created=rpc(c,'stock_product_create',dict(name='Pepsi 500ml',selling_price='100',quantity=24,reorder_level=5))
+    stock=read(c,'stock_products')['items'][0];assert stock['stock_quantity']==24
+    claims(c,other)
+    assert read(c,'stock_products')['items']==[]
+    denied(c,lambda:rpc(c,'stock_receive',dict(id=created['id'],quantity=1)))
+    claims(c,staff)
+    denied(c,lambda:rpc(c,'stock_product_create',dict(name='Bad',selling_price='10',quantity=1)))
+    drink_order=rpc(c,'order_create',dict(items=[dict(menu_item_id=created['menu_item_id'],quantity=2)]))
+    key=str(uuid4());transition=json.dumps(dict(id=drink_order['id'],expected_version=1,status='preparing'))
+    for _ in range(2):c.execute("select public.sd_command('order_transition',%s::jsonb,%s)",(transition,key))
+    claims(c,manager)
+    stock=read(c,'stock_products')['items'][0];assert stock['stock_quantity']==22 and stock['used']==2
+    rpc(c,'stock_receive',dict(id=created['id'],quantity=6))
+    rpc(c,'stock_remove',dict(id=created['id'],quantity=1,reason='Broken bottle'))
+    stock=read(c,'stock_products')['items'][0];assert stock['stock_quantity']==27 and stock['received']==30 and stock['removed']==1
+    denied(c,lambda:rpc(c,'stock_receive',dict(id=created['id'],quantity=1.5)))
+    oversized=rpc(c,'order_create',dict(items=[dict(menu_item_id=created['menu_item_id'],quantity=28)]))
+    denied(c,lambda:rpc(c,'order_transition',dict(id=oversized['id'],expected_version=1,status='preparing')))
+    assert read(c,'stock_products')['items'][0]['stock_quantity']==27
+
+
+def test_cashier_permissions_payment_and_receipt(db):
+    c=db;manager=make_manager(c);other_manager=make_manager(c)
+    waiter=make_staff(c,manager);kitchen=make_staff(c,manager,'kitchen');cashier=make_staff(c,manager,'cashier');other=make_staff(c,other_manager,'cashier')
+    claims(c,manager)
+    dish=rpc(c,'menu_create',dict(name='Cashier meal',selling_price='450'))
+    claims(c,waiter)
+    order=rpc(c,'order_create',dict(items=[dict(menu_item_id=dish['id'],quantity=2)],discount='50',tax='20'))
+    claims(c,cashier)
+    for resource in ['users','menu','inventory','stock_products','expenses','analytics','audit','recipes','forecasts']:
+        denied(c,lambda resource=resource:read(c,resource))
+    for operation in ['order_create','order_update','order_transition','inventory_record','expense_create','menu_delete','user_update']:
+        denied(c,lambda operation=operation:rpc(c,operation,dict(id=order['id'],expected_version=1,status='completed')))
+    for old in ['read_core_before_cashier','read_core_before_simple_stock']:
+        denied(c,lambda old=old:c.execute(f"select private.{old}('menu','{{}}')"))
+    denied(c,lambda:rpc(c,'order_pay',dict(id=order['id'],expected_version=1,cash_received='1000')))
+    claims(c,kitchen)
+    prepared=rpc(c,'order_transition',dict(id=order['id'],expected_version=1,status='preparing'))
+    ready=rpc(c,'order_transition',dict(id=order['id'],expected_version=prepared['version'],status='ready'))
+    for actor in [waiter,kitchen]:
+        claims(c,actor)
+        denied(c,lambda:rpc(c,'order_pay',dict(id=order['id'],expected_version=ready['version'],cash_received='1000')))
+        denied(c,lambda:rpc(c,'order_transition',dict(id=order['id'],expected_version=ready['version'],status='completed')))
+        denied(c,lambda:read(c,'receipt',dict(id=order['id'])))
+    claims(c,other)
+    assert read(c,'bills')['items']==[]
+    denied(c,lambda:read(c,'receipt',dict(id=order['id'])))
+    denied(c,lambda:rpc(c,'order_pay',dict(id=order['id'],expected_version=ready['version'],cash_received='1000')))
+    claims(c,cashier)
+    receipt=read(c,'receipt',dict(id=order['id']));assert receipt['payment_status']=='unpaid' and receipt['total']=='870.00'
+    assert 'ingredient_cost_snapshot' not in receipt['items'][0]
+    denied(c,lambda:rpc(c,'order_pay',dict(id=order['id'],expected_version=ready['version'],cash_received='800')))
+    key=str(uuid4());body=json.dumps(dict(id=order['id'],expected_version=ready['version'],cash_received='1000'))
+    for _ in range(2):
+        paid=c.execute("select public.sd_command('order_pay',%s::jsonb,%s)",(body,key)).fetchone()[0]
+        assert paid['status']=='completed' and paid['change_given']=='130.00'
+    denied(c,lambda:rpc(c,'order_pay',dict(id=order['id'],expected_version=paid['version'],cash_received='1000')))
+    assert read(c,'bills')['items']==[]
+    assert len(read(c,'bills',dict(payment_status='paid'))['items'])==1
+    final=read(c,'receipt',dict(id=order['id']));assert final['payment_status']=='paid' and final['paid_by']==str(cashier)
+    assert final['receipt_number']==receipt['receipt_number']
+    claims(c,manager)
+    rpc(c,'menu_update',dict(id=dish['id'],expected_version=dish['version'],selling_price='999'))
+    claims(c,cashier)
+    assert read(c,'receipt',dict(id=order['id']))['total']=='870.00'
+    owner(c)
+    assert c.execute("select count(*) from private.audit_logs where action='order_paid' and entity_id=%s",(order['id'],)).fetchone()[0]==1
+
+
+def test_concurrent_cashiers_collect_only_once(db):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    c=db;manager=make_manager(c);a=make_staff(c,manager,'cashier');b=make_staff(c,manager,'cashier')
+    claims(c,manager);dish=rpc(c,'menu_create',dict(name='Concurrent bill',selling_price='100'))
+    order=rpc(c,'order_create',dict(items=[dict(menu_item_id=dish['id'],quantity=1)]))
+    prepared=rpc(c,'order_transition',dict(id=order['id'],expected_version=1,status='preparing'))
+    ready=rpc(c,'order_transition',dict(id=order['id'],expected_version=prepared['version'],status='ready'))
+    c.commit();barrier=Barrier(2)
+    def pay(actor):
+        try:
+            with psycopg.connect(c.info.dsn) as connection:
+                claims(connection,actor);barrier.wait(timeout=10)
+                rpc(connection,'order_pay',dict(id=order['id'],expected_version=ready['version'],cash_received='100'))
+            return 'paid'
+        except psycopg.Error as exc:
+            assert exc.sqlstate=='40001'
+            return 'conflict'
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(pay,[a,b]))==['conflict','paid']
+    owner(c)
+    assert c.execute("select count(*) from private.audit_logs where action='order_paid' and entity_id=%s",(order['id'],)).fetchone()[0]==1
