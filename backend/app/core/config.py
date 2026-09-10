@@ -25,3 +25,21 @@ class Settings(BaseSettings):
     groq_timeout_seconds: float = Field(30, ge=1, le=120)
     job_poll_seconds: float = Field(2, ge=0.1, le=60)
     job_lease_seconds: int = Field(120, ge=30, le=1800)
+
+    @field_validator("app_timezone")
+    @classmethod
+    def valid_timezone(cls, value: str) -> str:
+        ZoneInfo(value)
+        return value
+
+    def capabilities(self) -> dict[str, bool]:
+        return {
+            "database": bool(self.database_url.get_secret_value()),
+            "administration": bool(self.database_url.get_secret_value()),
+            "groq": bool(self.groq_api_key.get_secret_value()),
+        }
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
