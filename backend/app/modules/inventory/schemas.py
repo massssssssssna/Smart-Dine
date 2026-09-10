@@ -23,3 +23,27 @@ class IngredientCreate(RequestModel):
     name: str = Field(min_length=1, max_length=120)
     unit: Literal["g", "ml", "piece"]
     reorder_level: Annotated[Decimal, Field(ge=0, max_digits=18, decimal_places=6)] = Decimal("0")
+
+
+class IngredientUpdate(IngredientCreate):
+    expected_version: Version
+
+
+class InventoryRecord(RequestModel):
+    ingredient_id: UUID
+    kind: Literal["purchase", "wastage", "adjustment"]
+    quantity: Annotated[Decimal, Field(max_digits=18, decimal_places=6)]
+    unit_cost: UnitCost | None = None
+    reason: str = Field(min_length=3, max_length=1000)
+
+    @model_validator(mode="after")
+    def valid_transaction(self):
+        if self.quantity == 0:
+            raise ValueError("Quantity cannot be zero.")
+        if self.kind in {"purchase", "wastage"} and self.quantity < 0:
+            raise ValueError("Purchase/wastage quantity is positive; the ledger chooses its sign.")
+        if self.kind == "purchase" and self.unit_cost is None:
+            raise ValueError("Purchase requires unit_cost.")
+        if self.kind != "purchase" and self.unit_cost is not None:
+            raise ValueError("Only purchases accept unit_cost; adjustments use current weighted cost.")
+        return self
