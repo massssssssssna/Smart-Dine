@@ -55,3 +55,6 @@ def main():
                 c.execute('delete from private.branches where id=%s',(branch,))
                 c.execute('delete from auth.users where id=any(%s::uuid[])',([str(x) for x in auth_ids],))
             print('Temporary test branch and accounts removed. Existing restaurant data was not changed.')
+
+
+if __name__=='__main__':main()
