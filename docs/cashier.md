@@ -18,4 +18,6 @@ Apply `supabase/migrations/20260910114914_cashier_billing.sql` before starting t
 
 The current-profile response advertises `cashier_billing_enabled` after migration. The staff form exposes the cashier option and the waiter payment button is removed only when that capability is present, so an incomplete rollout does not interrupt the existing payment workflow.
 
-Verification includes the cashier tests in `backend/tests/database/test_branch_isolation.py` and route contracts in `backend/tests/api/test_contracts.py`. Real database tests use a disposable localhost database through `SMARTDINE_TEST_DSN`. The live migration, backend restart and final end-to-end verification are pending approval-tool availability for this change.
+Activated on the local restaurant database on 10 September 2026 and restarted the backend. All five database tests passed, including cashier restrictions, branch isolation and concurrent payment protection. A temporary branch verified real browser login, unpaid bills, cash collection (PKR 1,000 received against PKR 870), PKR 130 change, the paid list and receipt-only print output through the running frontend and API. Temporary accounts and orders were removed afterward. Physical printer output was not tested.
+
+The manager can now select **Cashier / Billing** when adding or editing staff. Cashiers sign in through the normal sign-in page and are routed to `/cashier`.

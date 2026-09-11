@@ -54,6 +54,8 @@ def api():
     ("POST", f"/api/v1/recommendations/{ORDER_ID}/approve"),
     ("POST", f"/api/v1/recommendations/{ORDER_ID}/apply"),
     ("GET", "/api/v1/audit"),
+    ("POST", "/api/v1/floors"), ("PUT", f"/api/v1/floors/{ORDER_ID}"), ("DELETE", f"/api/v1/floors/{ORDER_ID}"),
+    ("POST", "/api/v1/tables"), ("PUT", f"/api/v1/tables/{ORDER_ID}"), ("DELETE", f"/api/v1/tables/{ORDER_ID}"),
 ])
 def test_staff_denied_manager_routes_before_data_access(api, method, path):
     client, gateway, actor, _ = api
@@ -85,6 +87,38 @@ def test_cashier_can_read_bills_and_record_payment(api):
     assert response.status_code == 200
     operation, body, _ = gateway.command.await_args.args
     assert operation=='order_pay' and body['cash_received']=='1000'
+
+
+def test_kitchen_cannot_create_or_edit_orders(api):
+    client, gateway, actor, _ = api
+    actor.role = 'staff'
+    actor.staff_type = 'kitchen'
+    response = client.post('/api/v1/orders', headers=HEADERS, json={'items': [{'menu_item_id': ITEM_ID, 'quantity': 1}]})
+    assert response.status_code == 403
+    response = client.put(f'/api/v1/orders/{ORDER_ID}', headers=HEADERS, json={'expected_version': 1, 'items': [{'menu_item_id': ITEM_ID, 'quantity': 1}]})
+    assert response.status_code == 403
+    gateway.command.assert_not_awaited()
+
+
+def test_waiter_cannot_transition_to_preparing_or_ready(api):
+    client, gateway, actor, _ = api
+    actor.role = 'staff'
+    actor.staff_type = 'waiter'
+    response = client.post(f'/api/v1/orders/{ORDER_ID}/status', headers=HEADERS, json={'expected_version': 1, 'status': 'preparing'})
+    assert response.status_code == 403
+    response = client.post(f'/api/v1/orders/{ORDER_ID}/status', headers=HEADERS, json={'expected_version': 1, 'status': 'ready'})
+    assert response.status_code == 403
+    gateway.command.assert_not_awaited()
+
+
+def test_kitchen_can_transition_to_preparing_and_ready(api):
+    client, gateway, actor, _ = api
+    actor.role = 'staff'
+    actor.staff_type = 'kitchen'
+    response = client.post(f'/api/v1/orders/{ORDER_ID}/status', headers=HEADERS, json={'expected_version': 1, 'status': 'preparing'})
+    assert response.status_code == 200
+    operation, body, _ = gateway.command.await_args.args
+    assert operation == 'order_transition' and body['status'] == 'preparing'
 
 
 @pytest.mark.parametrize('method,path,body', [

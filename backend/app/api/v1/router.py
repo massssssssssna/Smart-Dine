@@ -13,8 +13,9 @@ from app.modules.forecasts.router import router as forecasts
 from app.modules.assistant.router import router as assistant
 from app.modules.recommendations.router import router as recommendations
 from app.modules.audit.router import router as audit
+from app.modules.tables.router import router as tables
 
 router = APIRouter(prefix="/api/v1")
 for module in (auth, users, menu, recipes, orders, inventory, expenses, reviews, analytics,
-               forecasts, assistant, recommendations, audit):
+               forecasts, assistant, recommendations, audit, tables):
     router.include_router(module)

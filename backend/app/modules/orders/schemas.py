@@ -10,6 +10,7 @@ class OrderLine(RequestModel):
 
 
 class OrderCreate(RequestModel):
+    table_id: UUID | None = None
     items: list[OrderLine] = Field(min_length=1, max_length=100)
     discount: Money = 0
     platform_fee: Money = 0

@@ -6,6 +6,7 @@ import { api, ApiError, Profile, MenuItem, Order, Page, money } from '@/lib/api'
 import { Brand, Badge, Empty, Modal, Field } from './ui';
 import { MenuForm, OrderForm, StaffForm, CredentialsForm, RecipeForm } from './workspace-forms';
 import { StockPanel } from './simple-stock';
+import { TablesPanel } from './tables-panel';
 import { useConfirmation } from './use-confirmation';
 
 type Editor = { kind: 'order' | 'menu' | 'staff' | 'credentials' | 'recipe'; item?: Order | MenuItem | Profile };
@@ -31,46 +32,38 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
   const [updated, setUpdated] = useState('');
   const [ticketFilter, setTicketFilter] = useState('all');
 
-  // Handle browser back/forward buttons seamlessly without page reloads
+  // Handle browser back/forward buttons strictly within user's assigned portal
   useEffect(() => {
     const onPop = () => {
       const p = window.location.pathname.replace(/^\//, '');
-      if (['manager', 'waiter', 'kitchen'].includes(p)) {
-        setPortal(p);
-        setTab('overview');
-        setTicketFilter('all');
+      if (me) {
+        const expected = me.role === 'manager' ? 'manager' : me.staff_type;
+        if (p !== expected) {
+          window.location.replace('/' + expected);
+          return;
+        }
       }
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
-
-  // Instant in-app station switching without unmounting shell or showing full-screen green loaders
-  const switchPortal = (target: string) => {
-    if (portal === target) return;
-    setPortal(target);
-    window.history.pushState(null, '', '/' + target);
-    setTab('overview');
-    setTicketFilter('all');
-  };
+  }, [me]);
 
   const load = useCallback(async () => {
     try {
       const user = await api<Profile>('auth/me');
-      if(user.role==='staff' && user.staff_type==='cashier') {window.location.replace('/cashier');return;}
       if (!user.is_active) {
         await api('auth/logout', 'POST');
         window.location.replace('/sign-in');
         return;
       }
-      if (user.role !== 'manager' && (portal === 'manager' || portal !== user.staff_type)) {
-        setPortal(user.staff_type);
-        window.history.replaceState(null, '', '/' + user.staff_type);
+      const expectedPortal = user.role === 'manager' ? 'manager' : user.staff_type;
+      if (portal !== expectedPortal) {
+        window.location.replace('/' + expectedPortal);
         return;
       }
       setMe(user);
       const [o, m] = await Promise.all([
-        api<Page<Order>>(`orders?limit=100&offset=${offset}`),
+        api<Page<Order>>(`orders?limit=100&offset=${offset}&q=${encodeURIComponent(search)}`),
         api<Page<MenuItem>>('menu?limit=100'),
       ]);
       setOrders(o.items);
@@ -91,7 +84,7 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
     } finally {
       setIsReady(true);
     }
-  }, [portal, offset]);
+  }, [portal, offset, search]);
 
   // Resilient live polling every 15s without interrupting user interactions
   useEffect(() => {
@@ -122,7 +115,7 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
   }
 
   const filtered = orders.filter(o =>
-    (o.id + ' ' + o.notes + ' ' + o.items.map(i => i.name_snapshot).join(' ')).toLowerCase().includes(search.toLowerCase())
+    (o.id + ' ' + o.order_number + ' ' + o.floor_name_snapshot + ' ' + o.table_name_snapshot + ' ' + o.notes + ' ' + o.items.map(i => i.name_snapshot).join(' ')).toLowerCase().includes(search.toLowerCase())
   );
   const active = filtered.filter(o => !['completed', 'cancelled'].includes(o.status));
 
@@ -177,6 +170,7 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                 ['staff', 'Staff management', Users],
                 ['menu', 'Menu', BookOpen],
                 ['stock', 'Inventory', Package],
+                ['tables', 'Tables', LayoutDashboard],
               ]
             : [
                 [portal, portal === 'kitchen' ? 'Kitchen Display' : 'Waiter Station', portal === 'kitchen' ? ChefHat : UtensilsCrossed],
@@ -187,7 +181,7 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
               <button
                 key={path as string}
                 type="button"
-                onClick={() => portal === 'manager' ? setTab(path as string) : switchPortal(path as string)}
+                onClick={() => portal === 'manager' ? setTab(path as string) : undefined}
                 className={`nav-link ${(portal === 'manager' ? tab === path : portal === path) ? 'active' : ''}`}
                 aria-current={(portal === 'manager' ? tab === path : portal === path) ? 'page' : undefined}
               >
@@ -280,7 +274,7 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                     aria-label="Search orders"
                     placeholder="Search order or table…"
                     value={search}
-                    onChange={e => setSearch(e.target.value)}
+                    onChange={e => {setSearch(e.target.value);setOffset(0);}}
                   />
                 </label>
               </div>
@@ -304,10 +298,10 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                           <tr key={o.id}>
                             <td>
                               <button className="text-button" onClick={() => setEditor({ kind: 'order', item: o })}>
-                                #{o.id.slice(0, 6)}
+                                {o.order_number||o.id}
                               </button>
                             </td>
-                            <td>{o.notes || '—'}</td>
+                            <td>{[o.floor_name_snapshot,o.table_name_snapshot].filter(Boolean).join(' · ')}{o.seats_snapshot?` · ${o.seats_snapshot} seats`:''}<div>{o.notes}</div></td>
                             <td>
                               {o.items.map(i => (
                                 <div key={i.menu_item_id}>
@@ -552,6 +546,7 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
           )}
 
           {tab === 'stock' && <StockPanel onChanged={() => void load()} />}
+          {tab === 'tables' && <TablesPanel />}
         </main>
 
         <footer className="workspace-footer">
@@ -613,11 +608,11 @@ function OrderCard({ order: o, busy, onNext, onCancel, onEdit }: { order: Order;
   return (
     <article className={`order-card ${o.status}`}>
       <div className="card-title">
-        <h3>{o.notes.split('\n')[0] || 'Dining order'}</h3>
+        <h3>{[o.floor_name_snapshot,o.table_name_snapshot].filter(Boolean).join(' · ')||o.notes.split('\n')[0]||'Dining order'}{o.seats_snapshot?` · ${o.seats_snapshot} seats`:''}</h3>
         <Badge status={o.status} />
       </div>
       <div className="ticket-meta">
-        <span>#{o.id.slice(0, 6)}</span>
+        <span>{o.order_number||o.id}</span>
         <span>
           <Clock size={12} />
           {new Date(o.created_at).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Karachi' })}
@@ -631,7 +626,7 @@ function OrderCard({ order: o, busy, onNext, onCancel, onEdit }: { order: Order;
           </li>
         ))}
       </ul>
-      {o.notes.includes('\n') && <p className="order-notes">{o.notes.split('\n').slice(1).join('\n')}</p>}
+      {o.notes && <p className="order-notes">{o.notes}</p>}
       <div className="order-total">
         <span>Total</span>
         <strong>{money(o.total)}</strong>

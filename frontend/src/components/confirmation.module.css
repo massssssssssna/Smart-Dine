@@ -1,5 +1,5 @@
 .body{padding:28px}
-.symbol{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:50%;background:#fff0ed;color:#b92328;margin-bottom:18px}
+.symbol{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:50%;background:#fcf2f0;border:1px solid #e9cecc;color:#792328;margin-bottom:18px}
 .description{font-size:15px;line-height:1.65;color:#506659;overflow-wrap:anywhere;margin-bottom:26px}
 .actions{display:flex;justify-content:flex-end;gap:12px;border-top:1px solid #e4ece6;padding-top:20px}
 .actions button{min-width:110px;padding:12px 18px}

@@ -49,6 +49,18 @@ async def require_cashier(actor: Annotated[Actor, Depends(get_actor)]) -> Actor:
     return actor
 
 
+async def require_waiter_or_manager(actor: Annotated[Actor, Depends(get_actor)]) -> Actor:
+    if actor.role != 'manager' and actor.staff_type != 'waiter':
+        raise AppError('floor_staff_required', 'Waiter or manager access is required.', 403)
+    return actor
+
+
+async def require_kitchen_or_manager(actor: Annotated[Actor, Depends(get_actor)]) -> Actor:
+    if actor.role != 'manager' and actor.staff_type != 'kitchen':
+        raise AppError('kitchen_required', 'Kitchen or manager access is required.', 403)
+    return actor
+
+
 async def get_gateway(actor: Annotated[Actor, Depends(get_actor)]) -> AsyncIterator[Gateway]:
     gateway = await make_gateway(actor.access_token)
     try:

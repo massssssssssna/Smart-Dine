@@ -246,6 +246,55 @@ def test_cashier_permissions_payment_and_receipt(db):
     assert c.execute("select count(*) from private.audit_logs where action='order_paid' and entity_id=%s",(order['id'],)).fetchone()[0]==1
 
 
+def test_floors_tables_and_order_identity(db):
+    c=db; manager=make_manager(c); other=make_manager(c)
+    waiter=make_staff(c,manager); cashier=make_staff(c,manager,'cashier')
+    claims(c,manager)
+    f=rpc(c,'floor_create',dict(name='1'))
+    f2=rpc(c,'floor_create',dict(name='2'))
+    denied(c,lambda:rpc(c,'floor_create',dict(name='Lobby')))
+    key=str(uuid4()); body=json.dumps(dict(floor_id=f['id'],name='Table 3',seats=4))
+    t=c.execute("select public.sd_command('table_create',%s::jsonb,%s)",(body,key)).fetchone()[0]
+    assert c.execute("select public.sd_command('table_create',%s::jsonb,%s)",(body,key)).fetchone()[0]['id']==t['id']
+    denied(c,lambda:rpc(c,'floor_delete',dict(id=f['id'],expected_version=1)))
+    denied(c,lambda:rpc(c,'table_create',dict(floor_id=f['id'],name='Table 3',seats=4)))
+    denied(c,lambda:rpc(c,'table_create',dict(floor_id=f['id'],name='Bad',seats=0)))
+    dish=rpc(c,'menu_create',dict(name='Floor meal',selling_price='100'))
+    claims(c,waiter)
+    assert read(c,'floors')['items'][0]['table_count']==1
+    assert read(c,'tables',dict(floor_id=f['id']))['items'][0]['seats']==4
+    denied(c,lambda:rpc(c,'floor_create',dict(name='Forbidden')))
+    denied(c,lambda:rpc(c,'table_delete',dict(id=t['id'],expected_version=1)))
+    order=rpc(c,'order_create',dict(table_id=t['id'],items=[dict(menu_item_id=dish['id'],quantity=1)]))
+    assert order['table_name_snapshot']=='Table 3' and order['floor_name_snapshot']=='1'
+    assert read(c,'orders',dict(q=order['order_number']))['items'][0]['id']==order['id']
+    claims(c,other)
+    assert read(c,'floors')['items']==[]
+    assert read(c,'orders',dict(q=order['order_number']))['items']==[]
+    denied(c,lambda:rpc(c,'table_create',dict(floor_id=f['id'],name='Foreign',seats=5)))
+    denied(c,lambda:rpc(c,'order_create',dict(table_id=t['id'],items=[dict(menu_item_id=dish['id'],quantity=1)])))
+    denied(c,lambda:c.execute('select * from private.floors'))
+    claims(c,manager)
+    denied(c,lambda:rpc(c,'table_delete',dict(id=t['id'],expected_version=1)))
+    moved=rpc(c,'table_update',dict(id=t['id'],expected_version=1,name='Table 4',floor_id=f2['id'],seats=6))
+    denied(c,lambda:rpc(c,'table_update',dict(id=t['id'],expected_version=1,name='Stale',floor_id=f2['id'],seats=5)))
+    for status in ['preparing','ready']:
+        order=rpc(c,'order_transition',dict(id=order['id'],expected_version=order['version'],status=status))
+    claims(c,cashier)
+    denied(c,lambda:read(c,'floors'))
+    rpc(c,'order_pay',dict(id=order['id'],expected_version=order['version'],cash_received='100'))
+    receipt=read(c,'receipt',dict(id=order['id']))
+    assert receipt['receipt_number']==order['order_number'] and receipt['table_name_snapshot']=='Table 3' and receipt['seats_snapshot']==4
+    claims(c,manager)
+    second=rpc(c,'order_create',dict(table_id=t['id'],items=[dict(menu_item_id=dish['id'],quantity=1)]))
+    assert second['order_number']!=order['order_number']
+    rpc(c,'order_transition',dict(id=second['id'],expected_version=second['version'],status='cancelled',reason='Test cleanup'))
+    rpc(c,'table_delete',dict(id=t['id'],expected_version=moved['version']))
+    for floor in [f,f2]:rpc(c,'floor_delete',dict(id=floor['id'],expected_version=floor['version']))
+    assert read(c,'floors')['items']==[]
+    assert read(c,'receipt',dict(id=order['id']))['table_name_snapshot']=='Table 3'
+
+
 def test_concurrent_cashiers_collect_only_once(db):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier

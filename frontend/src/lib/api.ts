@@ -10,5 +10,5 @@ export async function api<T=unknown>(path:string,method='GET',body?:unknown,key?
 export const money=(value:string|number=0)=>new Intl.NumberFormat('en-PK',{style:'currency',currency:'PKR',maximumFractionDigits:2}).format(Number(value));
 export type Profile={id:string;email:string;full_name:string;role:'manager'|'staff';staff_type:'waiter'|'kitchen'|'cashier';is_active:boolean;version:number;cashier_billing_enabled?:boolean};
 export type MenuItem={id:string;name:string;category:string;selling_price:string;packaging_cost?:string;is_active:boolean;version:number};
-export type Order={id:string;status:string;notes:string;version:number;created_at:string;created_by:string;total:string;items:{menu_item_id:string;name?:string;name_snapshot?:string;quantity:number;unit_price?:string}[];discount:string;tax:string;platform_fee?:string;delivery_cost?:string};
+export type Order={id:string;order_number?:string;table_id?:string|null;floor_name_snapshot?:string|null;table_name_snapshot?:string|null;seats_snapshot?:number|null;status:string;notes:string;version:number;created_at:string;created_by:string;total:string;items:{menu_item_id:string;name?:string;name_snapshot?:string;quantity:number;unit_price?:string}[];discount:string;tax:string;platform_fee?:string;delivery_cost?:string};
 export type Page<T>={items:T[];total:number;limit:number;offset:number};
