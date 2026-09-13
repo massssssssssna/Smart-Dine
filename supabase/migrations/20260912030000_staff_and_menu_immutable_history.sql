@@ -74,3 +74,57 @@ begin
   alter table private.idempotency_records add constraint idempotency_records_actor_id_fkey foreign key (actor_id) references private.profiles(id) on delete cascade;
 end $$;
 
+-- 4. Update command_core to record staff snapshots on order_create, order_transition, and order_pay
+alter function private.command_core(text,jsonb,uuid) rename to command_core_before_staff_immutability;
+
+create function private.command_core(p_operation text,p_payload jsonb,p_actor uuid) returns jsonb
+language plpgsql set search_path='' as $$
+declare
+  actor_prof private.profiles;
+  result jsonb;
+  order_rec private.orders;
+begin
+  select * into actor_prof from private.profiles where id = p_actor;
+
+  -- If operation is order_create or order_update, capture creator snapshots
+  if p_operation in ('order_create', 'order_update') then
+    result := private.command_core_before_staff_immutability(p_operation, p_payload, p_actor);
+    update private.orders
+    set
+      created_by_name = coalesce(created_by_name, actor_prof.full_name, 'Staff Member'),
+      created_by_email = coalesce(created_by_email, actor_prof.email, 'staff@smartdine.pk')
+    where id = (result->>'id')::uuid;
+    return private.order_json((result->>'id')::uuid, actor_prof.role = 'manager');
+  end if;
+
+  -- If operation is order_transition to preparing/ready, capture kitchen chef snapshot
+  if p_operation = 'order_transition' and p_payload->>'status' in ('preparing', 'ready') then
+    result := private.command_core_before_staff_immutability(p_operation, p_payload, p_actor);
+    update private.orders
+    set
+      prepared_by = coalesce(prepared_by, p_actor),
+      prepared_by_name = coalesce(prepared_by_name, actor_prof.full_name, 'Kitchen Staff'),
+      prepared_by_email = coalesce(prepared_by_email, actor_prof.email, 'kitchen@smartdine.pk'),
+      prepared_at = coalesce(prepared_at, now())
+    where id = (p_payload->>'id')::uuid;
+    return private.order_json((p_payload->>'id')::uuid, actor_prof.role = 'manager');
+  end if;
+
+  -- If operation is order_pay, capture cashier snapshot
+  if p_operation = 'order_pay' then
+    result := private.command_core_before_staff_immutability(p_operation, p_payload, p_actor);
+    update private.orders
+    set
+      paid_by = p_actor,
+      paid_by_name = coalesce(actor_prof.full_name, 'Cashier Staff'),
+      paid_by_email = coalesce(actor_prof.email, 'cashier@smartdine.pk')
+    where id = (p_payload->>'id')::uuid;
+    return result;
+  end if;
+
+  return private.command_core_before_staff_immutability(p_operation, p_payload, p_actor);
+end $$;
+
+revoke all on function private.command_core(text,jsonb,uuid) from public,anon,authenticated,service_role;
+grant execute on function private.command_core(text,jsonb,uuid) to sd_branch_executor;
+
