@@ -348,6 +348,256 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
               <span className="eyebrow">
                 {portal === 'manager'
                   ? 'EXECUTIVE SERVICE CONSOLE'
+                  : portal === 'waiter'
+                  ? 'DINING ROOM SERVICE'
+                  : 'LIVE KITCHEN OPERATIONS'}
+              </span>
+              <h1>
+                {portal === 'manager'
+                  ? (tab === 'analytics' ? 'Sales, Costs & Profit' : tab === 'forecasts' ? 'Demand & Kitchen Planning' : tab === 'decisions' ? 'Recommended Actions & Change History' : tab === 'expenses' ? 'Operating Expenses' : tab === 'tables' ? 'Tables & Seating' : tab === 'stock' ? 'Inventory & Stock' : 'Dashboard')
+                  : portal === 'waiter'
+                  ? (tab === 'history' ? 'Dining Room History' : 'Waiter Station')
+                  : (tab === 'history' ? 'Culinary Dispatch History' : 'Kitchen Live Board')}
+              </h1>
+              {portal !== 'manager' && (
+                <span className="station-person">
+                  {portal === 'waiter' ? me?.full_name : 'High-speed culinary dispatch'}{' '}
+                  <span>{portal === 'waiter' ? 'ON DUTY' : 'LIVE STATION'}</span>
+                </span>
+              )}
+              <p className="muted small">
+                {updated ? `Last refreshed ${updated} · Live sync active` : 'Connecting to your restaurant'}
+              </p>
+            </div>
+            {portal === 'waiter' && (
+              <button className="gold" onClick={() => setEditor({ kind: 'order' })}>
+                <Plus size={17} /> Take new order
+              </button>
+            )}
+            {portal === 'manager' && (
+              <div className="header-manager-actions">
+                <button
+                  type="button"
+                  className="assistant-header-btn"
+                  onClick={() => setAssistantOpen(true)}
+                  title="Ask Smart Dine (Ctrl+K)"
+                >
+                  <Sparkles size={16} className="sparkle-icon" />
+                  <span>Ask Smart Dine</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="error" role="alert">
+              {error} <button className="text-button" onClick={() => void load()}>Retry</button>
+            </div>
+          )}
+
+          {tab === 'overview' && (
+            <>
+              {portal !== 'kitchen' && (
+                <div className="stats">
+                  {stats.map(({ label, value, note, icon: Icon }) => (
+                    <article key={label}>
+                      <div>
+                        <span>{label}</span>
+                        <Icon size={19} />
+                      </div>
+                      <strong>{value}</strong>
+                      <small>{note}</small>
+                    </article>
+                  ))}
+                </div>
+              )}
+              {portal === 'kitchen' && (
+                <>
+                  {recentlyCancelled.length > 0 && (
+                    <div className="error" style={{ background: '#fff4f2', borderColor: '#f0b7b3', color: '#9c2621', marginBottom: '18px' }}>
+                      <strong>Notice:</strong> {recentlyCancelled.length} order(s) recently cancelled — halt preparation for:{' '}
+                      {recentlyCancelled.map(o => `${o.order_number || o.id.slice(0, 8)} (${[o.floor_name_snapshot, o.table_name_snapshot].filter(Boolean).join(' · ') || 'Dining room'})`).join(', ')}.
+                    </div>
+                  )}
+                  <div className="ticket-filters">
+                    {[
+                      ['all', 'All active orders', kitchenActive.length],
+                      ['pending', 'Pending dispatch', kitchenActive.filter(o => o.status === 'pending').length],
+                      ['preparing', 'In preparation', kitchenActive.filter(o => o.status === 'preparing').length],
+                      ['ready', 'Ready & plated', kitchenActive.filter(o => o.status === 'ready').length],
+                    ].map(([status, label, count]) => (
+                      <button
+                        key={status as string}
+                        type="button"
+                        className={ticketFilter === status ? 'selected' : ''}
+                        onClick={() => setTicketFilter(status as string)}
+                      >
+                        {label as string}
+                        <span>{count as number}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {me && (portal === 'waiter' || portal === 'kitchen') && (
+                <RoleInsights portal={portal} me={me} orders={orders} />
+              )}
+
+              <div className="toolbar" style={{ flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2>{portal === 'manager' ? 'Operations & Historical Orders' : portal === 'waiter' ? 'Active Floor Orders' : 'Kitchen Tickets'}</h2>
+                  {portal === 'manager' && (
+                    <p className="muted" style={{ margin: 0, fontSize: '11px' }}>
+                      Complete 6-month order history · Waiter, kitchen and cashier names are kept with every order
+                    </p>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {orderStaffFilter && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#e1fae7', padding: '5px 10px', borderRadius: '4px', fontSize: '11px', border: '1px solid #c4e8cf' }}>
+                      <span>Staff: <strong>{orderStaffFilter}</strong></span>
+                      <button style={{ padding: '0 4px', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => setOrderStaffFilter('')}>✕</button>
+                    </div>
+                  )}
+                  {portal === 'manager' && (
+                    <div className="ticket-filters" style={{ margin: 0 }}>
+                      {(['all', '180d', '30d', '7d'] as const).map(range => (
+                        <button
+                          key={range}
+                          type="button"
+                          className={orderDateRange === range ? 'selected' : ''}
+                          onClick={() => setOrderDateRange(range)}
+                          style={{ padding: '5px 9px', fontSize: '11px' }}
+                        >
+                          {range === 'all' ? 'All (6 Mo)' : range === '180d' ? 'Last 180d' : range === '30d' ? 'Last 30d' : 'Last 7d'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <label className="search" style={{ margin: 0 }}>
+                    <Search size={16} />
+                    <input
+                      aria-label="Search orders"
+                      placeholder="Search order, staff, table…"
+                      value={search}
+                      onChange={e => {setSearch(e.target.value);setOffset(0);}}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {portal === 'manager' ? (
+                <div className="dashboard-grid">
+                  <section className="panel table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Order ID</th>
+                          <th>Floor / Table</th>
+                          <th>Staff Attribution</th>
+                          <th>Items Ordered</th>
+                          <th>Date & Time</th>
+                          <th>Status</th>
+                          <th>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map(o => (
+                          <tr key={o.id}>
+                            <td>
+                              <button className="text-button" style={{ fontWeight: 600 }} onClick={() => setEditor({ kind: 'order', item: o })}>
+                                {o.order_number||o.id.slice(0, 10)}
+                              </button>
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: 600 }}>
+                                {[o.floor_name_snapshot ? `Floor ${o.floor_name_snapshot}` : '', o.table_name_snapshot].filter(Boolean).join(' · ') || 'Dining room'}
+                                {o.seats_snapshot ? <span className="muted" style={{ fontSize: '10px' }}> ({o.seats_snapshot} seats)</span> : null}
+                              </div>
+                              {o.notes && <div className="muted" style={{ fontSize: '10px', marginTop: '2px' }}>“{o.notes}”</div>}
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px' }}>
+                                <span title={`Waiter account: ${o.created_by_email || 'N/A'}`}>
+                                  <UserRound size={12}/> <strong style={{ color: '#03241a' }}>{o.created_by_name || 'Waiter'}</strong>
+                                </span>
+                                {o.prepared_by_name && (
+                                  <span className="muted" title={`Chef account: ${o.prepared_by_email || 'N/A'}`} style={{ fontSize: '10px' }}>
+                                    <CookingPot size={11}/> Chef: {o.prepared_by_name}
+                                  </span>
+                                )}
+                                {o.paid_by_name && (
+                                  <span className="muted" title={`Cashier account: ${o.paid_by_email || 'N/A'}`} style={{ fontSize: '10px' }}>
+                                    <CreditCard size={11}/> Cashier: {o.paid_by_name}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              {o.items.map((i, idx) => (
+                                <div key={idx} style={{ fontSize: '11px' }}>
+                                  {i.quantity} × {i.name_snapshot || i.name}
+                                </div>
+                              ))}
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: 500 }}>
+                                {new Date(o.created_at).toLocaleDateString('en-PK', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  timeZone: 'Asia/Karachi',
+                                })}
+                              </div>
+                              <div className="muted" style={{ fontSize: '10px' }}>
+                                {new Date(o.created_at).toLocaleTimeString('en-PK', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  timeZone: 'Asia/Karachi',
+                                })}
+                              </div>
+                            </td>
+                            <td><Badge status={o.status} /></td>
+                            <td style={{ fontWeight: 600 }}>{money(o.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!filtered.length && <Empty>No orders yet. Take your first order to begin service.</Empty>}
+                  </section>
+                  <aside className="right-column">
+                    <section className="panel">
+                      <div className="panel-head">
+                        <h3>Active Brigade</h3>
+                        <button className="text-button" onClick={() => setTab('staff')}>Manage all →</button>
+                      </div>
+                      {staff
+                        .filter(s => s.is_active)
+                        .slice(0, 5)
+                        .map(s => (
+                          <div className="person" key={s.id}>
+                            <span className="avatar">{s.full_name[0]}</span>
+                            <div>
+                              <strong>{s.full_name}</strong>
+                              <small>{s.role === 'manager' ? 'Manager' : s.staff_type}</small>
+                            </div>
+                            <span className="dot" />
+                          </div>
+                        ))}
+                    </section>
+                    <section className="panel">
+                      <h3>Signature Items</h3>
+                      {menu
+                        .filter(m => m.is_active)
+                        .slice(0, 5)
+                        .map((m, i) => (
+                          <div className="menu-preview" key={m.id}>
+                            <span>0{i + 1}</span>
+                            <div>
+                              <strong>{m.name}</strong>
+                              <small>{m.category}</small>
+                            </div>
                             <b>{money(m.selling_price)}</b>
                           </div>
                         ))}
@@ -448,156 +698,6 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                   />
-                </label>
-              </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Order #</th>
-                    <th>Table / Floor</th>
-                    <th>Items Prepared / Served</th>
-                    <th>Time</th>
-                    <th>Status</th>
-                    <th>{portal === 'kitchen' ? 'Dispatch Station' : 'Total Bill'}</th>
-                    {portal === 'waiter' && <th>Action</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {historyOrders.map(o => (
-                    <tr key={o.id}>
-                      <td>
-                        <strong style={{ fontFamily: 'monospace', fontSize: '13px', color: '#03241a' }}>
-                          {o.order_number || o.id.slice(0, 8)}
-                        </strong>
-                      </td>
-                      <td>
-                        <strong>{[o.floor_name_snapshot, o.table_name_snapshot].filter(Boolean).join(' · ') || 'Dining room'}</strong>
-                        {o.seats_snapshot ? <small className="muted" style={{ display: 'block' }}>{o.seats_snapshot} seats</small> : null}
-                        {o.notes && (
-                          <div style={{ fontSize: '11px', color: '#735824', background: '#fdf6e6', padding: '3px 7px', borderRadius: '3px', marginTop: '4px', maxWidth: '280px' }}>
-                            {o.notes}
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        {o.items.map(i => (
-                          <div key={i.menu_item_id} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '2px' }}>
-                            <b style={{ background: 'var(--soft)', padding: '1px 5px', borderRadius: '3px', fontSize: '11px', minWidth: '22px', textAlign: 'center' }}>
-                              {i.quantity}×
-                            </b>
-                            <span>{i.name_snapshot}</span>
-                          </div>
-                        ))}
-                      </td>
-                      <td>
-                        <div>
-                          {new Date(o.created_at).toLocaleTimeString('en-PK', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            timeZone: 'Asia/Karachi',
-                          })}
-                        </div>
-                        <small className="muted">
-                          {new Date(o.created_at).toLocaleDateString('en-PK', { timeZone: 'Asia/Karachi' })}
-                        </small>
-                      </td>
-                      <td><Badge status={o.status} /></td>
-                      <td>
-                        {portal === 'kitchen' ? (
-                          <span className="badge active">Fulfilled</span>
-                        ) : (
-                          <strong>{money(o.total)}</strong>
-                        )}
-                      </td>
-                      {portal === 'waiter' && (
-                        <td>
-                          <button className="soft" type="button" onClick={() => setEditor({ kind: 'order', item: o })}>
-                            View details
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {!historyOrders.length && (
-                <Empty>No completed orders in history yet.</Empty>
-              )}
-            </section>
-          )}
-
-          {tab === 'staff' && (
-            <section className="panel">
-              <div className="panel-head">
-                <div>
-                  <h2>Staff & Station Operations</h2>
-                  <p className="muted">Manage staff accounts and review each person&apos;s recorded service history.</p>
-                </div>
-                {staffSubTab === 'accounts' && (
-                  <button onClick={() => setEditor({ kind: 'staff' })}><Plus size={16} /> Add staff</button>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid #dce8df', paddingBottom: '12px' }}>
-                <button
-                  type="button"
-                  className={staffSubTab === 'accounts' ? 'selected' : 'soft'}
-                  onClick={() => setStaffSubTab('accounts')}
-                  style={{ fontSize: '12px', padding: '8px 14px', borderRadius: '4px' }}
-                >
-                  <Users size={15} /> Active Staff & Accounts ({staff.filter(s => s.role === 'staff').length})
-                </button>
-                <button
-                  type="button"
-                  className={staffSubTab === 'ledger' ? 'selected' : 'soft'}
-                  onClick={() => setStaffSubTab('ledger')}
-                  style={{ fontSize: '12px', padding: '8px 14px', borderRadius: '4px' }}
-                >
-                  <History size={15} /> Staff Service History ({staffLedger.length})
-                </button>
-              </div>
-
-              {staffSubTab === 'accounts' ? (
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Station</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {staff.filter(s => s.role === 'staff').map(s => (
-                        <tr key={s.id}>
-                          <td><strong>{s.full_name}</strong></td>
-                          <td>{s.email}</td>
-                          <td>
-                            <Badge status={s.role === 'manager' ? 'manager' : s.staff_type === 'kitchen' ? 'preparing' : 'ready'} />{' '}
-                            <span style={{ marginLeft: '0.4rem', fontSize: '0.85rem' }}>
-                              {s.role === 'manager' ? 'General Manager' : s.staff_type === 'cashier' ? 'Cashier / Billing' : s.staff_type === 'kitchen' ? 'Kitchen (KDS)' : 'Waiter (Floor)'}
-                            </span>
-                          </td>
-                          <td><Badge status={s.is_active ? 'active' : 'inactive'} /></td>
-                          <td className="row-actions">
-                            <button className="soft" onClick={() => setEditor({ kind: 'staff', item: s })}>Edit station</button>
-                            <button className="soft" onClick={() => setEditor({ kind: 'credentials', item: s })}>Reset password</button>
-                            {s.id !== me?.id &&
-                              (s.is_active ? (
-                                <button
-                                  className="danger-ghost"
-                                  disabled={busy}
-                                  onClick={() => {
-                                    confirm({title:'Deactivate staff?',description:`${s.full_name} will no longer be able to sign in. You can reactivate this account later.`,label:'Deactivate',onConfirm:async()=>{
-                                        await api('users/' + s.id, 'PUT', {
-                                          full_name: s.full_name,
-                                          role: s.role,
-                                          staff_type: s.staff_type,
-                                          is_active: false,
-                                          expected_version: s.version,
-                                        }, crypto.randomUUID());
                                         await load();
                                     }});
                                   }}
