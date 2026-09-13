@@ -112,6 +112,24 @@ class Gateway:
     async def service(self, operation: str, payload: dict | None = None) -> Any:
         return await self._rpc("public.sd_service", operation, to_jsonable_python(payload or {}))
 
+    async def query(self, sql: str, params: tuple = ()) -> list[dict]:
+        pool = await get_pool()
+        async with pool.connection() as conn:
+            if self.claims:
+                await conn.execute("SELECT set_config('request.jwt.claims', %s, true)", (json.dumps(self.claims),))
+            elif self.is_admin:
+                await conn.execute("SELECT set_config('request.jwt.claims', %s, true)", (json.dumps({"role": "service_role"}),))
+            cur = await conn.execute(sql, params)
+            if not cur.description:
+                return []
+            cols = [desc[0] for desc in cur.description]
+            rows = await cur.fetchall()
+            return [dict(zip(cols, row)) for row in rows]
+
+    async def query_one(self, sql: str, params: tuple = ()) -> dict | None:
+        rows = await self.query(sql, params)
+        return rows[0] if rows else None
+
     async def close(self) -> None:
         pass
 
