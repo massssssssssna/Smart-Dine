@@ -290,3 +290,58 @@ def test_void_expense_validates_reason_and_version(api):
     }, HEADERS["Idempotency-Key"])
 
 
+def test_list_recommendations_passes_status_filter(api):
+    client, gateway, _, _ = api
+    response = client.get("/api/v1/recommendations?status=proposed&limit=25&offset=0")
+    assert response.status_code == 200
+    gateway.read.assert_awaited_once_with("recommendations", {
+        "limit": 25,
+        "offset": 0,
+        "status": "proposed"
+    })
+
+
+def test_reject_recommendation_requires_reason(api):
+    client, gateway, _, _ = api
+    # Invalid: reason too short (< 3 chars)
+    res_short = client.post(f"/api/v1/recommendations/{ORDER_ID}/reject", headers=HEADERS, json={"expected_version": 1, "reason": "ab"})
+    assert res_short.status_code == 422
+
+    # Valid: version + reason >= 3 chars
+    res_ok = client.post(f"/api/v1/recommendations/{ORDER_ID}/reject", headers=HEADERS, json={"expected_version": 1, "reason": "Price too high for local market"})
+    assert res_ok.status_code == 200
+    gateway.command.assert_awaited_once_with("recommendation_reject", {
+        "id": ORDER_ID,
+        "expected_version": 1,
+        "reason": "Price too high for local market"
+    }, HEADERS["Idempotency-Key"])
+
+
+def test_audit_log_enriches_actor_profiles(api):
+    client, gateway, _, _ = api
+    ACTOR_ID = "11111111-1111-1111-1111-111111111111"
+    async def mock_read(resource, params):
+        if resource == "audit":
+            return {
+                "items": [
+                    {"id": 1, "actor_id": ACTOR_ID, "action": "price_update", "entity": "menu_items", "before_data": {}, "after_data": {}, "created_at": "2026-09-13T00:00:00Z"}
+                ],
+                "total": 1, "limit": 50, "offset": 0
+            }
+        elif resource == "users":
+            return {
+                "items": [
+                    {"id": ACTOR_ID, "full_name": "Massna Manager", "role": "manager"}
+                ]
+            }
+        return {}
+
+    gateway.read.side_effect = mock_read
+    response = client.get("/api/v1/audit?limit=50&offset=0")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["actor_name"] == "Massna Manager"
+    assert data["items"][0]["actor_role"] == "manager"
+
+
