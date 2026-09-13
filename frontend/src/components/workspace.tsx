@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { LayoutDashboard, UtensilsCrossed, ChefHat, Globe, LogOut, Plus, Search, Users, BookOpen, Package, Check, Clock, ArrowRight, History, Award, Receipt, TrendingUp, ShieldCheck, LineChart, Sparkles, UserRound, CookingPot, CreditCard } from 'lucide-react';
+import { LayoutDashboard, UtensilsCrossed, ChefHat, Globe, LogOut, Plus, Search, Users, BookOpen, Package, Check, Clock, ArrowRight, History, Award, Receipt, TrendingUp, ShieldCheck, LineChart, Sparkles, UserRound, CookingPot, CreditCard, MessageSquare } from 'lucide-react';
 import { api, ApiError, Profile, MenuItem, Order, StaffLedgerItem, Page, money } from '@/lib/api';
 import { Brand, Badge, Empty, Modal, Field } from './ui';
 import { MenuForm, OrderForm, StaffForm, CredentialsForm, RecipeForm } from './workspace-forms';
@@ -11,6 +11,7 @@ import { ExpensesPanel } from './expenses-panel';
 import { AnalyticsPanel } from './analytics-panel';
 import { DecisionsAuditPanel } from './decisions-audit-panel';
 import { ForecastsPanel } from './forecasts-panel';
+import { ReviewsPanel } from './reviews-panel';
 import { AssistantDrawer } from './assistant-drawer';
 import { RoleInsights } from './role-insights';
 import { useConfirmation } from './use-confirmation';
@@ -284,6 +285,7 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                 ['analytics', 'Sales & Profit', TrendingUp],
                 ['forecasts', 'Demand Planning', LineChart],
                 ['decisions', 'Recommended Actions', ShieldCheck],
+                ['reviews', 'Guest Reviews', MessageSquare],
                 ['staff', 'Staff management', Users],
                 ['menu', 'Dishes', BookOpen],
                 ['stock', 'Inventory', Package],
@@ -354,7 +356,7 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
               </span>
               <h1>
                 {portal === 'manager'
-                  ? (tab === 'analytics' ? 'Sales, Costs & Profit' : tab === 'forecasts' ? 'Demand & Kitchen Planning' : tab === 'decisions' ? 'Recommended Actions & Change History' : tab === 'expenses' ? 'Operating Expenses' : tab === 'tables' ? 'Tables & Seating' : tab === 'stock' ? 'Inventory & Stock' : 'Dashboard')
+                  ? (tab === 'analytics' ? 'Sales, Costs & Profit' : tab === 'forecasts' ? 'Demand & Kitchen Planning' : tab === 'decisions' ? 'Recommended Actions & Change History' : tab === 'reviews' ? 'Guest Reviews & Service Quality' : tab === 'expenses' ? 'Operating Expenses' : tab === 'tables' ? 'Tables & Seating' : tab === 'stock' ? 'Inventory & Stock' : 'Dashboard')
                   : portal === 'waiter'
                   ? (tab === 'history' ? 'Dining Room History' : 'Waiter Station')
                   : (tab === 'history' ? 'Culinary Dispatch History' : 'Kitchen Live Board')}
@@ -1027,6 +1029,7 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
           {portal === 'manager' && tab === 'analytics' && <AnalyticsPanel />}
           {portal === 'manager' && tab === 'forecasts' && <ForecastsPanel />}
           {portal === 'manager' && tab === 'decisions' && <DecisionsAuditPanel />}
+          {portal === 'manager' && tab === 'reviews' && <ReviewsPanel />}
         </main>
 
         <footer className="workspace-footer">
