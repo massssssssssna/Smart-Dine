@@ -1,7 +1,8 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
-import {Receipt,LogOut,Printer,Check,Search,WalletCards,ListChecks,TrendingUp,CalendarDays} from 'lucide-react';
+import {Receipt,LogOut,Printer,Check,Search,WalletCards,ListChecks,TrendingUp,CalendarDays,ExternalLink,QrCode} from 'lucide-react';
+import QRCode from 'qrcode';
 import {api,ApiError,Profile,Page,money} from '@/lib/api';
 import {Brand,Modal,Field,Empty} from './ui';
 import styles from './cashier.module.css';
@@ -26,7 +27,49 @@ export default function CashierWorkspace(){
  const [me,setMe]=useState<Profile|null>(null),[bills,setBills]=useState<Bill[]>([]),[allBills,setAllBills]=useState<Bill[]>([]),[filter,setFilter]=useState('unpaid'),[search,setSearch]=useState('');
  const [offset,setOffset]=useState(0),[total,setTotal]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(true),[selected,setSelected]=useState<ReceiptData|null>(null);
  const [cash,setCash]=useState(''),[discountPercent,setDiscountPercent]=useState('0'),[discountReason,setDiscountReason]=useState(''),[busy,setBusy]=useState(false),[paymentError,setPaymentError]=useState('');
+ const [reviewToken,setReviewToken]=useState<string|null>(null),[reviewUrl,setReviewUrl]=useState<string|null>(null),[qrCodeDataUrl,setQrCodeDataUrl]=useState<string|null>(null),[loadingQr,setLoadingQr]=useState(false),[qrError,setQrError]=useState('');
  const paying=useRef(false),retry=useRef<{body:string;key:string}|null>(null);
+
+ useEffect(()=>{
+  if(!selected||selected.status!=='completed'){
+    setReviewToken(null);
+    setReviewUrl(null);
+    setQrCodeDataUrl(null);
+    setQrError('');
+    return;
+  }
+  let active=true;
+  async function generateReviewQr(){
+    try{
+      setLoadingQr(true);
+      setQrError('');
+      const res=await api<{token:string}>(
+        'reviews/tokens',
+        'POST',
+        {order_id:selected!.id},
+        `review-token-${selected!.id}`
+      );
+      if(!active||!res?.token)return;
+      setReviewToken(res.token);
+      const publicBase=(process.env.NEXT_PUBLIC_SITE_URL||window.location.origin).replace(/\/$/,'');
+      const destination=`${publicBase}/review?token=${res.token}`;
+      setReviewUrl(destination);
+      const url=await QRCode.toDataURL(destination,{
+        width:512,
+        margin:4,
+        errorCorrectionLevel:'M',
+        color:{dark:'#000000',light:'#ffffff'}
+      });
+      if(active)setQrCodeDataUrl(url);
+    }catch(err){
+      if(active)setQrError((err as Error)?.message||'Review QR could not be generated.');
+    }finally{
+      if(active)setLoadingQr(false);
+    }
+  }
+  void generateReviewQr();
+  return ()=>{active=false;};
+ },[selected?.id,selected?.status]);
  const load=useCallback(async()=>{
   try{
     const user=await api<Profile>('auth/me');
@@ -141,7 +184,7 @@ export default function CashierWorkspace(){
   {selected&&<Modal title={selected.status==='completed'?'Payment receipt':'Customer bill'} preventClose={busy} onClose={()=>{setSelected(null);setPaymentError('');}}>
    <article className={styles.receipt}>
     <header><h2>Smart Dine</h2><p>{selected.branch_name}</p><strong>{selected.payment_status.toUpperCase()}</strong></header>
-    <p className={styles.billId}>{selected.receipt_number}</p><p>{time(selected.created_at)}</p><p>{[selected.floor_name_snapshot,selected.table_name_snapshot].filter(Boolean).join(' · ')||'Dining order'}{selected.seats_snapshot?` · ${selected.seats_snapshot} seats`:''}</p><p>{selected.notes.split('\n')[0]}</p>
+    <p className={styles.billId}><strong>Receipt ID:</strong> {selected.receipt_number}</p><p>{time(selected.created_at)}</p><p>{[selected.floor_name_snapshot,selected.table_name_snapshot].filter(Boolean).join(' · ')||'Dining order'}{selected.seats_snapshot?` · ${selected.seats_snapshot} seats`:''}</p><p>{selected.notes.split('\n')[0]}</p>
     <table><thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>{selected.items.map(item=><tr key={item.id}><td>{item.name_snapshot}</td><td>{item.quantity}</td><td>{money(item.price_snapshot)}</td><td>{money(cents(item.price_snapshot)*item.quantity/100)}</td></tr>)}</tbody></table>
     <dl>
       <div><dt>Subtotal</dt><dd>{money(selected.subtotal)}</dd></div>
@@ -152,6 +195,27 @@ export default function CashierWorkspace(){
       {selected.status==='completed'&&<>{selected.cash_received!==null&&<><div><dt>Cash received</dt><dd>{money(selected.cash_received)}</dd></div><div><dt>Change returned</dt><dd>{money(selected.change_given||'0')}</dd></div></>}{selected.completed_at&&<div><dt>Paid at</dt><dd>{time(selected.completed_at)}</dd></div>}</>}
     </dl>
     <p className={styles.thanks}>{selected.status==='completed'?'Thank you for dining with us.':selected.status==='cancelled'?'Cancelled — no payment due.':'Unpaid bill — payment has not been received.'}</p>
+    {selected.status==='completed'&&(
+      <div className={styles.receiptQr}>
+        <div className={styles.qrTitleRow}>
+          <QrCode size={13}/>
+          <strong>Scan to review your meal</strong>
+        </div>
+        {qrCodeDataUrl ? (
+          <>
+            <img src={qrCodeDataUrl} alt={`Review QR for receipt ${selected.receipt_number}`} width={216} height={216} className={styles.qrImg}/>
+            <span className={styles.qrSub}>Point your phone camera at this code to open the review form.</span>
+            <span className={styles.qrReceipt}>Receipt {selected.receipt_number}</span>
+            {reviewUrl&&<a href={reviewUrl} target="_blank" rel="noopener noreferrer" className={styles.qrLink}>
+              Test review form <ExternalLink size={11}/>
+            </a>}
+            {!process.env.NEXT_PUBLIC_SITE_URL&&<span className={styles.qrSetupNote}>Local test QR only — add your public website address before giving this receipt to a guest.</span>}
+          </>
+        ) : (
+          <span className={qrError?styles.qrError:styles.qrSub}>{loadingQr?'Generating secure review QR…':qrError||'Review QR is not available.'}</span>
+        )}
+      </div>
+    )}
    </article>
    <div className={styles.controls}>
     {selected.status==='ready'&&<>
@@ -174,7 +238,7 @@ export default function CashierWorkspace(){
     </>}
     {['pending','preparing'].includes(selected.status)&&<p className="muted">Payment can be recorded once the kitchen marks this order ready. Reopen the bill to refresh its status.</p>}
     {paymentError&&<p className="error" role="alert">{paymentError}</p>}
-    <div className={styles.buttons}><button className="soft" disabled={busy} onClick={()=>window.print()}><Printer size={16}/>{selected.status==='completed'?'Print receipt':'Print bill'}</button>{selected.status==='ready'&&<button className="gold" disabled={busy||!cash||cents(cash)<cents(String(computedTotal))} onClick={()=>void pay()}><Check size={16}/>{busy?'Recording…':'Confirm cash received · Mark paid'}</button>}</div>
+    <div className={styles.buttons}><button className="soft" disabled={busy||(selected.status==='completed'&&loadingQr)} onClick={()=>window.print()}><Printer size={16}/>{selected.status==='completed'?(loadingQr?'Preparing review QR…':'Print receipt'):'Print bill'}</button>{selected.status==='ready'&&<button className="gold" disabled={busy||!cash||cents(cash)<cents(String(computedTotal))} onClick={()=>void pay()}><Check size={16}/>{busy?'Recording…':'Confirm cash received · Mark paid'}</button>}</div>
    </div>
   </Modal>}
  </div>;
