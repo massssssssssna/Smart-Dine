@@ -57,3 +57,134 @@ export type AuditLogItem = {
 };
 
 export type ForecastModel = 'damped_weekly_ets' | 'weekly_seasonal_naive';
+export type ForecastStatus = 'completed' | 'insufficient_history';
+
+export type DailyForecastPoint = {
+  day: string;
+  quantity: number;
+};
+
+export type PredictionInterval = {
+  level: number;
+  lower: number;
+  upper: number;
+  method: string;
+  samples: number;
+  interpretation: string;
+};
+
+export type ForecastCandidate = {
+  model: string;
+  mae: number;
+  wape: number | null;
+  status?: string;
+};
+
+export type ForecastResult = {
+  model_version: string;
+  model: ForecastModel;
+  target_start: string;
+  target_end: string;
+  as_of: string;
+  timezone: string;
+  status: ForecastStatus;
+  monthly_quantity?: number;
+  prediction_interval?: PredictionInterval;
+  uncertainty_status?: string;
+  metrics?: {
+    mae: number;
+    wape: number | null;
+    wape_unit: string;
+    validation_folds?: { training_days: number; holdout_days: number }[];
+  };
+  candidates?: ForecastCandidate[];
+  daily?: DailyForecastPoint[];
+  training_start?: string;
+  training_end?: string;
+  training_days?: number;
+  required_complete_months?: number;
+  missing_days?: number;
+  first_missing_day?: string;
+};
+
+export type ForecastRun = {
+  id: string;
+  job_id: string;
+  menu_item_id: string;
+  as_of: string;
+  status: string;
+  result: ForecastResult;
+  created_at: string;
+};
+
+export type ProcessingJob = {
+  id: string;
+  kind: string;
+  payload: {
+    menu_item_id?: string;
+    as_of?: string;
+    menu_item_ids?: string[];
+  };
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  attempts: number;
+  max_attempts: number;
+  last_error_code: string | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
+export type HistoryImportResult = {
+  source_name: string;
+  row_count: number;
+  created_at: string;
+};
+
+export type AssistantEvidence = {
+  id: string;
+  tool: string;
+  period: { start_date: string; end_date: string };
+  data: Record<string, unknown>;
+  temporal_scope?: string;
+  scope_note?: string;
+};
+
+export type AssistantQuestionRequest = {
+  question: string;
+  start_date: string;
+  end_date: string;
+};
+
+export type AssistantQuestionResponse = {
+  run_id: string;
+  answer: string;
+  evidence_ids: string[];
+  period: { start_date: string; end_date: string };
+  evidence: AssistantEvidence[];
+  verified_metrics: Record<string, unknown>;
+  notice: string;
+};
+
+export type AssistantRunRecord = {
+  id: string;
+  run_id: string;
+  actor_id: string;
+  question: string;
+  period: { start_date: string; end_date: string };
+  model: string;
+  status: string;
+  created_at: string;
+};
+
+export type AssistantChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  period?: { start_date: string; end_date: string };
+  status?: 'sending' | 'completed' | 'error';
+  errorMessage?: string;
+  evidence?: AssistantEvidence[];
+  evidence_ids?: string[];
+  verified_metrics?: Record<string, unknown>;
+  notice?: string;
+};
