@@ -47,7 +47,7 @@ def api():
     ("GET", f"/api/v1/recipes/{ITEM_ID}"),
     ("PUT", f"/api/v1/recipes/{ITEM_ID}"),
     ("POST", "/api/v1/inventory/ingredients"),
-    ("GET", "/api/v1/expenses"), ("POST", f"/api/v1/expenses/{ORDER_ID}/void"),
+    ("GET", "/api/v1/expenses"), ("POST", "/api/v1/expenses"), ("POST", f"/api/v1/expenses/{ORDER_ID}/void"),
     ("GET", "/api/v1/analytics/summary?start_date=2026-01-01&end_date=2026-01-31"),
     ("GET", "/api/v1/reviews"), ("GET", "/api/v1/reviews/analysis"),
     ("GET", "/api/v1/recommendations"), ("POST", "/api/v1/recommendations"),
@@ -56,6 +56,9 @@ def api():
     ("GET", "/api/v1/audit"),
     ("POST", "/api/v1/floors"), ("PUT", f"/api/v1/floors/{ORDER_ID}"), ("DELETE", f"/api/v1/floors/{ORDER_ID}"),
     ("POST", "/api/v1/tables"), ("PUT", f"/api/v1/tables/{ORDER_ID}"), ("DELETE", f"/api/v1/tables/{ORDER_ID}"),
+    ("GET", "/api/v1/forecasts"), ("POST", "/api/v1/forecasts/runs"), ("GET", "/api/v1/forecasts/jobs"),
+    ("POST", "/api/v1/forecasts/history/import"),
+    ("POST", "/api/v1/assistant"), ("POST", "/api/v1/assistant/questions"), ("GET", "/api/v1/assistant/runs"),
 ])
 def test_staff_denied_manager_routes_before_data_access(api, method, path):
     client, gateway, actor, _ = api
@@ -161,6 +164,7 @@ def test_order_forwards_decimal_without_float_rounding(api):
 def test_staff_cannot_receive_costs_on_mutation(api):
     client, gateway, actor, _ = api
     actor.role = "staff"
+    actor.staff_type = "kitchen"
     gateway.command.return_value = {"id": ORDER_ID, "status": "preparing", "ingredient_cost": "3.21",
                                     "items": [{"menu_item_id": ITEM_ID, "price_snapshot": "20.00",
                                                "ingredient_cost_snapshot": "3.21", "packaging_cost_snapshot": "1.00"}]}
@@ -252,3 +256,5 @@ def test_recommendation_requires_typed_change_and_record_version(api):
     })
     assert response.status_code == 422
     gateway.command.assert_not_awaited()
+
+
