@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 from fastapi import APIRouter
 from app.modules.common import ActorDep, GatewayDep, IdempotencyKey, ManagerDep, PageDep, ReasonedVersion, payload
@@ -8,8 +9,20 @@ router = APIRouter(prefix="/expenses", tags=["Expenses"])
 
 
 @router.get("")
-async def list_expenses(gateway: GatewayDep, manager: ManagerDep, page: PageDep):
-    return await ExpenseService(gateway).read(page)
+async def list_expenses(
+    gateway: GatewayDep,
+    manager: ManagerDep,
+    page: PageDep,
+    start_date: date | None = None,
+    end_date: date | None = None,
+):
+    params = {**page}
+    if start_date:
+        params["start_date"] = start_date.isoformat()
+    if end_date:
+        params["end_date"] = end_date.isoformat()
+    return await ExpenseService(gateway).read(params)
+
 
 
 @router.get("/{expense_id}")
