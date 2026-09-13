@@ -48,6 +48,26 @@ export default function CashierWorkspace(){
     setError('');
     const receipt=await api<ReceiptData>('orders/'+bill.id+'/receipt');
     setSelected(receipt);
+    setCash('');
+    setDiscountPercent(receipt.discount_percent ? String(receipt.discount_percent) : '0');
+    setDiscountReason(receipt.discount_reason || '');
+    setPaymentError('');
+    retry.current=null;
+  }catch(e){setError((e as Error).message);}
+ }
+
+ const discPct = Number(discountPercent) || 0;
+ const computedDiscount = selected ? Math.round(Number(selected.subtotal) * (discPct / 100) * 100) / 100 : 0;
+ const computedTotal = selected ? Math.max(0, Math.round((Number(selected.subtotal) - computedDiscount + Number(selected.tax)) * 100) / 100) : 0;
+
+ async function pay(){
+  if(!selected||paying.current)return;
+  if(!cash||!Number.isFinite(Number(cash))||cents(cash)<cents(String(computedTotal))){setPaymentError('Cash received must cover the full bill.');return;}
+  paying.current=true;setBusy(true);setPaymentError('');
+  const body={
+    expected_version:selected.version,
+    cash_received:cash,
+    discount:computedDiscount,
     discount_percent:discPct>0?discPct:null,
     discount_reason:discountReason.trim()||undefined
   };
