@@ -128,3 +128,39 @@ end $$;
 revoke all on function private.command_core(text,jsonb,uuid) from public,anon,authenticated,service_role;
 grant execute on function private.command_core(text,jsonb,uuid) to sd_branch_executor;
 
+-- 5. Update public.sd_delete_staff to safely delete without foreign key blocks
+create or replace function public.sd_delete_staff(p_user_id uuid) returns jsonb language plpgsql security definer set search_path='' as $$
+declare
+  actor uuid := private.require_actor(true);
+  target private.profiles;
+  b uuid;
+begin
+  select branch_id into b from private.profiles where id = actor for update;
+  select * into target from private.profiles where id = p_user_id for update;
+  if not found or target.role <> 'staff' or target.branch_id is distinct from b then
+    raise exception using errcode = '42501', message = 'Only your branch staff can be deleted';
+  end if;
+  perform set_config('app.branch_id', b::text, true);
+  perform private.audit(actor, 'staff_deleted', 'profiles', target.id, null, jsonb_build_object('full_name', target.full_name, 'email', target.email, 'staff_type', target.staff_type));
+
+  delete from auth.sessions where user_id = target.id;
+  delete from private.user_provisioning where user_id = target.id or email = target.email;
+  delete from private.idempotency_records where actor_id = target.id;
+  delete from private.profiles where id = target.id;
+  delete from auth.users where id = target.id;
+
+  return jsonb_build_object('status', 'deleted', 'id', p_user_id, 'full_name', target.full_name);
+end $$;
+
+revoke all on function public.sd_delete_staff(uuid) from public,anon,service_role;
+grant execute on function public.sd_delete_staff(uuid) to authenticated;
+
+-- 6. Update search query in private.read_core('orders') to include staff names and emails
+do $$ declare s text; begin
+  s := pg_get_functiondef('private.read_core(text,jsonb)'::regprocedure);
+  s := replace(s,
+    'concat_ws('' '',o.id,o.order_number,o.notes,o.floor_name_snapshot,o.table_name_snapshot)',
+    'concat_ws('' '',o.id,o.order_number,o.notes,o.floor_name_snapshot,o.table_name_snapshot,o.created_by_name,o.created_by_email,o.prepared_by_name,o.prepared_by_email,o.paid_by_name,o.paid_by_email)'
+  );
+  execute s;
+end $$;
