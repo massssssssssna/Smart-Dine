@@ -8,8 +8,11 @@ router = APIRouter(prefix="/recommendations", tags=["Recommendations"])
 
 
 @router.get("")
-async def list_recommendations(gateway: GatewayDep, manager: ManagerDep, page: PageDep):
-    return await RecommendationService(gateway).read(page)
+async def list_recommendations(gateway: GatewayDep, manager: ManagerDep, page: PageDep, status: str | None = None):
+    params = dict(page)
+    if status:
+        params["status"] = status
+    return await RecommendationService(gateway).read(params)
 
 
 @router.get("/{recommendation_id}")
