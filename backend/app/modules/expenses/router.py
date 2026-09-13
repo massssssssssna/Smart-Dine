@@ -1,7 +1,7 @@
 from datetime import date
 from uuid import UUID
 from fastapi import APIRouter
-from app.modules.common import ActorDep, GatewayDep, IdempotencyKey, ManagerDep, PageDep, ReasonedVersion, payload
+from app.modules.common import GatewayDep, IdempotencyKey, ManagerDep, PageDep, ReasonedVersion, payload
 from app.modules.expenses.schemas import ExpenseCreate
 from app.modules.expenses.service import ExpenseService
 
@@ -31,10 +31,11 @@ async def get_expense(expense_id: UUID, gateway: GatewayDep, manager: ManagerDep
 
 
 @router.post("", status_code=201)
-async def create_expense(body: ExpenseCreate, gateway: GatewayDep, actor: ActorDep, key: IdempotencyKey):
+async def create_expense(body: ExpenseCreate, gateway: GatewayDep, manager: ManagerDep, key: IdempotencyKey):
     return await ExpenseService(gateway).create(payload(body), key)
 
 
 @router.post("/{expense_id}/void")
 async def void_expense(expense_id: UUID, body: ReasonedVersion, gateway: GatewayDep, manager: ManagerDep, key: IdempotencyKey):
     return await ExpenseService(gateway).void(payload(body, expense_id), key)
+
