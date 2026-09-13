@@ -258,3 +258,35 @@ def test_recommendation_requires_typed_change_and_record_version(api):
     gateway.command.assert_not_awaited()
 
 
+def test_list_expenses_passes_date_range_to_gateway(api):
+    client, gateway, _, _ = api
+    response = client.get("/api/v1/expenses?start_date=2026-09-01&end_date=2026-09-30&limit=50&offset=0")
+    assert response.status_code == 200
+    gateway.read.assert_awaited_once_with("expenses", {
+        "limit": 50,
+        "offset": 0,
+        "start_date": "2026-09-01",
+        "end_date": "2026-09-30",
+    })
+
+
+def test_void_expense_validates_reason_and_version(api):
+    client, gateway, _, _ = api
+    # Invalid: reason too short (< 3 chars)
+    res_short = client.post(f"/api/v1/expenses/{ORDER_ID}/void", headers=HEADERS, json={"expected_version": 1, "reason": "no"})
+    assert res_short.status_code == 422
+
+    # Invalid: missing expected_version
+    res_no_ver = client.post(f"/api/v1/expenses/{ORDER_ID}/void", headers=HEADERS, json={"reason": "Valid reason but no version"})
+    assert res_no_ver.status_code == 422
+
+    # Valid: version + reason >= 3 chars
+    res_ok = client.post(f"/api/v1/expenses/{ORDER_ID}/void", headers=HEADERS, json={"expected_version": 2, "reason": "Duplicate voucher"})
+    assert res_ok.status_code == 200
+    gateway.command.assert_awaited_once_with("expense_void", {
+        "id": ORDER_ID,
+        "expected_version": 2,
+        "reason": "Duplicate voucher"
+    }, HEADERS["Idempotency-Key"])
+
+
