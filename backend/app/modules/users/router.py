@@ -15,6 +15,11 @@ async def list_users(gateway: GatewayDep, manager: ManagerDep, page: PageDep):
     return await UserService(gateway).read(page)
 
 
+@router.get("/ledger/history")
+async def get_staff_ledger(gateway: GatewayDep, manager: ManagerDep):
+    return await UserService(gateway).staff_ledger(manager)
+
+
 @router.get("/{user_id}")
 async def get_user(user_id: UUID, gateway: GatewayDep, manager: ManagerDep):
     return await UserService(gateway).read({"id": str(user_id)})
