@@ -32,8 +32,19 @@ function parseReviewComment(comment: string) {
     cleanComment = cleanComment.replace(aspectsMatch[0], '').trim();
   }
   if (dishesMatch) {
-    const pattern = /Dish\s+([0-9a-f-]{36}):\s*([1-5])★(?:\s*\((.*?)\))?/gi;
-    for (const match of dishesMatch[1].matchAll(pattern)) dishes.push({ menuItemId: match[1], rating: Number(match[2]), comment: match[3]?.trim() });
+    for (const raw of dishesMatch[1].split(';')) {
+      const p = raw.trim();
+      if (!p) continue;
+      const mUuid = p.match(/Dish\s+([0-9a-f-]{36}):\s*([1-5])★(?:\s*\((.*?)\))?/i);
+      if (mUuid) {
+        dishes.push({ menuItemId: mUuid[1], rating: Number(mUuid[2]), comment: mUuid[3]?.trim() });
+      } else {
+        const mNamed = p.match(/^(.+?):\s*([1-5])★(?:\s*\((.*?)\))?/i);
+        if (mNamed) {
+          dishes.push({ menuItemId: mNamed[1].trim(), rating: Number(mNamed[2]), comment: mNamed[3]?.trim() });
+        }
+      }
+    }
     cleanComment = cleanComment.replace(dishesMatch[0], '').trim();
   }
   return { userNote: cleanComment, aspects, dishes };
@@ -114,8 +125,15 @@ export function ReviewsPanel() {
   const dishLeaders = useMemo(() => {
     const dishes = new Map<string, { name: string; ratings: number[] }>();
     filteredReviews.forEach(review => {
-      const names = new Map((review.order_items || []).map(item => [item.menu_item_id, item.name]));
-      review.parsed.dishes.forEach(dish => { const name = names.get(dish.menuItemId); if (!name) return; const current = dishes.get(dish.menuItemId) || { name, ratings: [] }; current.ratings.push(dish.rating); dishes.set(dish.menuItemId, current); });
+      const idToName = new Map((review.order_items || []).map(item => [item.menu_item_id, item.name]));
+      const nameToName = new Map((review.order_items || []).map(item => [item.name.toLowerCase(), item.name]));
+      review.parsed.dishes.forEach(dish => {
+        const name = idToName.get(dish.menuItemId) || nameToName.get(dish.menuItemId.toLowerCase());
+        if (!name) return;
+        const current = dishes.get(name) || { name, ratings: [] };
+        current.ratings.push(dish.rating);
+        dishes.set(name, current);
+      });
     });
     return [...dishes.values()].map(dish => ({ ...dish, average: dish.ratings.reduce((sum, rating) => sum + rating, 0) / dish.ratings.length })).sort((a, b) => b.average - a.average || b.ratings.length - a.ratings.length).slice(0, 5);
   }, [filteredReviews]);
