@@ -345,3 +345,40 @@ def test_audit_log_enriches_actor_profiles(api):
     assert data["items"][0]["actor_role"] == "manager"
 
 
+def test_forecast_enqueue_accepts_single_or_multiple_items(api):
+    client, gateway, _, _ = api
+    # Single item with as_of
+    res = client.post("/api/v1/forecasts/runs", headers=HEADERS, json={
+        "menu_item_id": ITEM_ID,
+        "as_of": "2026-09-13"
+    })
+    assert res.status_code == 202
+    gateway.command.assert_awaited_once_with("forecast_enqueue", {
+        "menu_item_ids": [ITEM_ID]
+    }, HEADERS["Idempotency-Key"])
+
+
+def test_history_import_validates_csv_headers(api):
+    client, gateway, _, _ = api
+    # Invalid headers
+    res_bad = client.post("/api/v1/forecasts/history/import", headers=HEADERS, json={
+        "source_name": "Test POS",
+        "csv_text": "date,dish_id,units\n2026-01-01,1,10"
+    })
+    assert res_bad.status_code == 422
+
+    # Valid headers
+    valid_csv = f"day,menu_item_id,quantity,day_status\n2026-03-01,{ITEM_ID},25,complete"
+    res_ok = client.post("/api/v1/forecasts/history/import", headers=HEADERS, json={
+        "source_name": "Test POS",
+        "csv_text": valid_csv
+    })
+    assert res_ok.status_code == 200
+    gateway.command.assert_awaited_once_with("history_import", {
+        "source_name": "Test POS",
+        "rows": [
+            {"day": "2026-03-01", "menu_item_id": ITEM_ID, "quantity": 25, "day_status": "complete"}
+        ]
+    }, HEADERS["Idempotency-Key"])
+
+
