@@ -33,6 +33,20 @@ The local `.env` contains the connected project's actual URL and publishable key
 
 [Supabase project](https://supabase.com/dashboard/project/azpfnqmjamvcanacxayq) · [Setup](docs/setup.md) · [API guide](docs/api.md) · [Architecture](docs/architecture.md) · [Database](docs/database.md) · [Verification report](docs/verification.md)
 
+## Receipt review QR
+
+The paid receipt prints a high-resolution black-and-white QR code at a fixed 52 mm size. The URL inside the QR comes from `NEXT_PUBLIC_SITE_URL`, so it must be an address the guest's phone can reach.
+
+For a temporary same-Wi-Fi test, put the computer's LAN address in `frontend/.env.local`, for example:
+
+```env
+NEXT_PUBLIC_SITE_URL=http://192.168.1.25:3000
+```
+
+Then run `npm run dev:lan` inside `frontend`. Keep the computer and phone on the same Wi-Fi network, open the LAN address once on the phone, and print a fresh receipt. Existing printed QR codes keep their old address.
+
+For real guest use, deploy the frontend to a public HTTPS domain and set the deployment environment variable, for example `NEXT_PUBLIC_SITE_URL=https://app.yourrestaurant.com`. Restart or redeploy the frontend and print a fresh paid receipt. A QR containing `127.0.0.1` or `localhost` only works on the computer that generated it and cannot open on a guest's phone.
+
 ## Verification
 
 ```powershell
