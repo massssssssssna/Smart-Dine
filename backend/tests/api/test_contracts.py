@@ -22,6 +22,8 @@ def api():
     gateway = SimpleNamespace(read=AsyncMock(return_value={"items": [], "total": 0, "limit": 50, "offset": 0}),
                               command=AsyncMock(return_value={"id": ORDER_ID}),
                               service=AsyncMock(return_value={"id": ORDER_ID}),
+                              query=AsyncMock(return_value=[]),
+                              query_one=AsyncMock(return_value=None),
                               close=AsyncMock())
     admin_auth = SimpleNamespace(sign_out=AsyncMock(), create_user=AsyncMock(), list_users=AsyncMock(return_value=[]))
     gateway.client = SimpleNamespace(auth=SimpleNamespace(admin=admin_auth, sign_in_with_password=AsyncMock(),
@@ -217,6 +219,18 @@ def test_database_conflict_is_readable_and_keeps_request_id(api):
 def test_public_review_receipt_excludes_private_order_information(api):
     client, gateway, _, _ = api
     token = "z" * 64
+    gateway.query_one.return_value = {
+        "token_id": ITEM_ID,
+        "order_id": ORDER_ID,
+        "expires_at": None,
+        "used_at": None,
+        "order_number": "SD-1042",
+        "table_name_snapshot": "Table 4",
+        "floor_name_snapshot": "Main Floor",
+        "seats_snapshot": 4,
+        "created_by_name": "Server",
+        "order_created_at": "2026-09-14T12:00:00+00:00",
+    }
     gateway.service.return_value = {"id": ORDER_ID, "order_id": ITEM_ID, "secret": "do-not-return"}
     response = client.post("/api/v1/reviews/submit", json={"token": token, "rating": 4, "comment": "Tasty food"})
     assert response.status_code == 201
@@ -380,5 +394,4 @@ def test_history_import_validates_csv_headers(api):
             {"day": "2026-03-01", "menu_item_id": ITEM_ID, "quantity": 25, "day_status": "complete"}
         ]
     }, HEADERS["Idempotency-Key"])
-
 
