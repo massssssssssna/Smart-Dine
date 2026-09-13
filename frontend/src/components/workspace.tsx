@@ -698,6 +698,156 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                   />
+                </label>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Order #</th>
+                    <th>Table / Floor</th>
+                    <th>Items Prepared / Served</th>
+                    <th>Time</th>
+                    <th>Status</th>
+                    <th>{portal === 'kitchen' ? 'Dispatch Station' : 'Total Bill'}</th>
+                    {portal === 'waiter' && <th>Action</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyOrders.map(o => (
+                    <tr key={o.id}>
+                      <td>
+                        <strong style={{ fontFamily: 'monospace', fontSize: '13px', color: '#03241a' }}>
+                          {o.order_number || o.id.slice(0, 8)}
+                        </strong>
+                      </td>
+                      <td>
+                        <strong>{[o.floor_name_snapshot, o.table_name_snapshot].filter(Boolean).join(' · ') || 'Dining room'}</strong>
+                        {o.seats_snapshot ? <small className="muted" style={{ display: 'block' }}>{o.seats_snapshot} seats</small> : null}
+                        {o.notes && (
+                          <div style={{ fontSize: '11px', color: '#735824', background: '#fdf6e6', padding: '3px 7px', borderRadius: '3px', marginTop: '4px', maxWidth: '280px' }}>
+                            {o.notes}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        {o.items.map(i => (
+                          <div key={i.menu_item_id} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '2px' }}>
+                            <b style={{ background: 'var(--soft)', padding: '1px 5px', borderRadius: '3px', fontSize: '11px', minWidth: '22px', textAlign: 'center' }}>
+                              {i.quantity}×
+                            </b>
+                            <span>{i.name_snapshot}</span>
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        <div>
+                          {new Date(o.created_at).toLocaleTimeString('en-PK', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            timeZone: 'Asia/Karachi',
+                          })}
+                        </div>
+                        <small className="muted">
+                          {new Date(o.created_at).toLocaleDateString('en-PK', { timeZone: 'Asia/Karachi' })}
+                        </small>
+                      </td>
+                      <td><Badge status={o.status} /></td>
+                      <td>
+                        {portal === 'kitchen' ? (
+                          <span className="badge active">Fulfilled</span>
+                        ) : (
+                          <strong>{money(o.total)}</strong>
+                        )}
+                      </td>
+                      {portal === 'waiter' && (
+                        <td>
+                          <button className="soft" type="button" onClick={() => setEditor({ kind: 'order', item: o })}>
+                            View details
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!historyOrders.length && (
+                <Empty>No completed orders in history yet.</Empty>
+              )}
+            </section>
+          )}
+
+          {tab === 'staff' && (
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <h2>Staff & Station Operations</h2>
+                  <p className="muted">Manage staff accounts and review each person&apos;s recorded service history.</p>
+                </div>
+                {staffSubTab === 'accounts' && (
+                  <button onClick={() => setEditor({ kind: 'staff' })}><Plus size={16} /> Add staff</button>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid #dce8df', paddingBottom: '12px' }}>
+                <button
+                  type="button"
+                  className={staffSubTab === 'accounts' ? 'selected' : 'soft'}
+                  onClick={() => setStaffSubTab('accounts')}
+                  style={{ fontSize: '12px', padding: '8px 14px', borderRadius: '4px' }}
+                >
+                  <Users size={15} /> Active Staff & Accounts ({staff.filter(s => s.role === 'staff').length})
+                </button>
+                <button
+                  type="button"
+                  className={staffSubTab === 'ledger' ? 'selected' : 'soft'}
+                  onClick={() => setStaffSubTab('ledger')}
+                  style={{ fontSize: '12px', padding: '8px 14px', borderRadius: '4px' }}
+                >
+                  <History size={15} /> Staff Service History ({staffLedger.length})
+                </button>
+              </div>
+
+              {staffSubTab === 'accounts' ? (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Station</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {staff.filter(s => s.role === 'staff').map(s => (
+                        <tr key={s.id}>
+                          <td><strong>{s.full_name}</strong></td>
+                          <td>{s.email}</td>
+                          <td>
+                            <Badge status={s.role === 'manager' ? 'manager' : s.staff_type === 'kitchen' ? 'preparing' : 'ready'} />{' '}
+                            <span style={{ marginLeft: '0.4rem', fontSize: '0.85rem' }}>
+                              {s.role === 'manager' ? 'General Manager' : s.staff_type === 'cashier' ? 'Cashier / Billing' : s.staff_type === 'kitchen' ? 'Kitchen (KDS)' : 'Waiter (Floor)'}
+                            </span>
+                          </td>
+                          <td><Badge status={s.is_active ? 'active' : 'inactive'} /></td>
+                          <td className="row-actions">
+                            <button className="soft" onClick={() => setEditor({ kind: 'staff', item: s })}>Edit station</button>
+                            <button className="soft" onClick={() => setEditor({ kind: 'credentials', item: s })}>Reset password</button>
+                            {s.id !== me?.id &&
+                              (s.is_active ? (
+                                <button
+                                  className="danger-ghost"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    confirm({title:'Deactivate staff?',description:`${s.full_name} will no longer be able to sign in. You can reactivate this account later.`,label:'Deactivate',onConfirm:async()=>{
+                                        await api('users/' + s.id, 'PUT', {
+                                          full_name: s.full_name,
+                                          role: s.role,
+                                          staff_type: s.staff_type,
+                                          is_active: false,
+                                          expected_version: s.version,
+                                        }, crypto.randomUUID());
                                         await load();
                                     }});
                                   }}
