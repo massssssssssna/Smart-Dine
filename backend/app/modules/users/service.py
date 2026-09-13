@@ -21,9 +21,10 @@ class UserService:
         return await self.gateway._rpc("public.sd_delete_staff", str(user_id))
 
     async def _recheck_manager(self, actor):
-        profile = await self.gateway.read("me")
-        if str(profile.get("id")) != str(actor.id) or profile.get("role") != "manager" or not profile.get("is_active"):
-            raise AppError("manager_required", "Active manager access is required.", 403)
+        if self.gateway:
+            profile = await self.gateway.read("me")
+            if str(profile.get("id")) != str(actor.id) or profile.get("role") != "manager" or not profile.get("is_active"):
+                raise AppError("manager_required", "Active manager access is required.", 403)
 
     async def create(self, actor, body, key):
         await self._recheck_manager(actor)
@@ -108,3 +109,4 @@ class UserService:
                 await conn.execute("DELETE FROM auth.sessions WHERE user_id = %s", (str(user_id),))
 
         return {"status": "updated", "sign_in_required": True}
+
