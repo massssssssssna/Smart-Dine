@@ -42,3 +42,6 @@ class OrderTransition(Versioned):
 
 class OrderPayment(Versioned):
     cash_received: Money
+    discount: Money = 0
+    discount_percent: float | None = Field(default=None, ge=0.0, le=100.0)
+    discount_reason: str | None = Field(default=None, max_length=200)
