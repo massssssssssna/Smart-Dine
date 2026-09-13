@@ -1,7 +1,7 @@
 from uuid import UUID
 from fastapi import APIRouter
 from app.modules.common import GatewayDep, ActorDep, ManagerDep, IdempotencyKey, PageDep, Versioned, payload
-from app.modules.tables.schemas import FloorCreate, FloorUpdate, TableCreate, TableUpdate
+from app.modules.tables.schemas import FloorCreate, FloorUpdate, FloorTaxUpdate, TableCreate, TableUpdate
 from app.modules.tables.service import TablesService
 
 router = APIRouter(tags=['Floors & tables'])
@@ -21,6 +21,10 @@ async def edit_floor(id: UUID, body: FloorUpdate, gateway: GatewayDep, manager: 
 @router.delete('/floors/{id}')
 async def delete_floor(id: UUID, body: Versioned, gateway: GatewayDep, manager: ManagerDep, key: IdempotencyKey):
     return await TablesService(gateway).save('floor_delete', payload(body,id), key)
+
+@router.patch('/floors/{id}/tax')
+async def set_floor_tax(id: UUID, body: FloorTaxUpdate, gateway: GatewayDep, manager: ManagerDep, key: IdempotencyKey):
+    return await TablesService(gateway).save('floor_set_tax', {'floor_id': str(id), 'tax_rate': body.tax_rate}, key)
 
 @router.get('/tables')
 async def tables(floor_id: UUID, gateway: GatewayDep, actor: ActorDep, page: PageDep):
