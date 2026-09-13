@@ -18,7 +18,7 @@ async def list_forecasts(menu_item_id: UUID | None = None, limit: int = Query(50
 
 @router.post("/runs", status_code=202)
 async def enqueue(body: ForecastRequest, idempotency_key: Key, gateway=Depends(get_gateway)):
-    return await gateway.command("forecast_enqueue", body.model_dump(mode="json"), idempotency_key)
+    return await gateway.command("forecast_enqueue", {"menu_item_ids": [str(x) for x in (body.menu_item_ids or [])]}, idempotency_key)
 
 
 @router.get("/jobs")
