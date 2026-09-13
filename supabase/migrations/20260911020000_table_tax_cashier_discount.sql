@@ -105,3 +105,88 @@ begin
   return result;
  end if;
 
+ -- 2. Order creation & update with automatic table tax calculation
+ if p_operation in ('order_create', 'order_update') and p_payload ? 'table_id' then
+  perform private.require_actor(false);
+  select * into t from private.dining_tables where id=(p_payload->>'table_id')::uuid for share;
+  if not found then raise exception using errcode='P0002',message='Select an existing table'; end if;
+  select * into f from private.floors where id=t.floor_id for share;
+
+  -- Waiters cannot set discount or tax
+  if not is_mgr then
+   p_payload := p_payload - 'discount' - 'tax';
+  end if;
+
+  result := private.command_core_before_table_tax(p_operation, p_payload, p_actor);
+  
+  -- Calculate automated tax based on table tax_rate and order items
+  subtot := (select coalesce(sum(quantity*price_snapshot),0) from private.order_items where order_id=(result->>'id')::uuid);
+  calc_tax := round(subtot * (coalesce(t.tax_rate, 15.00) / 100.0), 2);
+
+  update private.orders set
+   table_id = t.id,
+   floor_name_snapshot = f.name,
+   table_name_snapshot = t.name,
+   seats_snapshot = t.seats,
+   tax_rate_snapshot = coalesce(t.tax_rate, 15.00),
+   tax = calc_tax
+  where id=(result->>'id')::uuid;
+
+  return private.order_json((result->>'id')::uuid, is_mgr);
+ end if;
+
+ -- 3. Bulk floor tax rate set
+ if p_operation = 'floor_set_tax' then
+  if private.require_actor(true) <> p_actor then raise exception using errcode='42501',message='Manager required'; end if;
+  select * into f from private.floors where id=(p_payload->>'floor_id')::uuid;
+  if not found then raise exception using errcode='P0002',message='Floor not found'; end if;
+  if (p_payload->>'tax_rate')::numeric is null or (p_payload->>'tax_rate')::numeric < 0 or (p_payload->>'tax_rate')::numeric > 100 then
+   raise exception using errcode='22023',message='Tax rate must be between 0 and 100 percent';
+  end if;
+  update private.dining_tables set
+   tax_rate = round((p_payload->>'tax_rate')::numeric, 2),
+   version = version + 1
+  where floor_id = f.id;
+  result := jsonb_build_object('floor_id', f.id, 'tax_rate', round((p_payload->>'tax_rate')::numeric, 2), 'status', 'updated');
+  perform private.audit(p_actor, 'floor_set_tax', 'floors', f.id, null, result);
+  return result;
+ end if;
+
+ -- 4. Table creation & update with tax_rate
+ if p_operation in ('table_create', 'table_update') then
+  if private.require_actor(true) <> p_actor then raise exception using errcode='42501',message='Manager required'; end if;
+  kind := 'dining_tables';
+  if p_operation = 'table_update' then
+   select * into t from private.dining_tables where id=(p_payload->>'id')::uuid for update;
+   if not found then raise exception using errcode='P0002',message='Table not found'; end if;
+   perform private.expect_version(t.version,(p_payload->>'expected_version')::integer);
+   before_data := to_jsonb(t);
+  end if;
+  select * into f from private.floors where id=(p_payload->>'floor_id')::uuid for key share;
+  if not found then raise exception using errcode='P0002',message='Floor not found'; end if;
+
+  if p_operation = 'table_create' then
+   insert into private.dining_tables(floor_id, name, seats, tax_rate)
+   values(f.id, btrim(p_payload->>'name'), (p_payload->>'seats')::integer, coalesce((p_payload->>'tax_rate')::numeric, 15.00))
+   returning * into t;
+  else
+   update private.dining_tables set
+    floor_id = f.id,
+    name = btrim(p_payload->>'name'),
+    seats = (p_payload->>'seats')::integer,
+    tax_rate = coalesce((p_payload->>'tax_rate')::numeric, t.tax_rate, 15.00),
+    version = version + 1
+   where id = t.id
+   returning * into t;
+  end if;
+  entity := t.id;
+  result := to_jsonb(t);
+  perform private.audit(p_actor, p_operation, kind, entity, before_data, result);
+  return result;
+ end if;
+
+ return private.command_core_before_table_tax(p_operation, p_payload, p_actor);
+end $$;
+
+revoke all on function private.command_core(text,jsonb,uuid) from public,anon,authenticated,service_role;
+grant execute on function private.command_core(text,jsonb,uuid) to sd_branch_executor;
