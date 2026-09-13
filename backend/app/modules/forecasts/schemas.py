@@ -7,7 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ForecastRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    menu_item_ids: list[UUID] = Field(min_length=1, max_length=100)
+    menu_item_ids: list[UUID] | None = Field(default=None, max_length=100)
+    menu_item_id: UUID | None = None
+    as_of: date | None = None
 
 
 class HistoryImport(BaseModel):
