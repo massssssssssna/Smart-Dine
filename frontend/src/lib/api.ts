@@ -188,3 +188,81 @@ export type AssistantChatMessage = {
   verified_metrics?: Record<string, unknown>;
   notice?: string;
 };
+
+export type ReviewTokenInfo = {
+  valid: boolean;
+  reason?: string;
+  message?: string;
+  order_id?: string;
+  order_number?: string;
+  table_name?: string;
+  floor_name?: string;
+  seats?: number;
+  waiter_name?: string;
+  created_at?: string;
+  items?: Array<{
+    menu_item_id: string;
+    name: string;
+    quantity: number;
+    price: string;
+  }>;
+};
+
+export type DishRatingPayload = {
+  menu_item_id: string;
+  rating: number;
+  comment?: string;
+};
+
+export type AspectRatingsPayload = {
+  taste?: number;
+  service_speed?: number;
+  cleanliness?: number;
+  hospitality?: number;
+  value?: number;
+};
+
+export type ReviewSubmitPayload = {
+  token: string;
+  rating: number;
+  comment: string;
+  menu_item_id?: string;
+  aspects?: AspectRatingsPayload;
+  dish_ratings?: DishRatingPayload[];
+};
+
+export type ReviewAnalysisAspect = {
+  aspect: 'taste' | 'price_value' | 'service_speed' | 'cleanliness';
+  sentiment: 'positive' | 'neutral' | 'negative' | 'mixed';
+  evidence: string;
+  start: number;
+  end: number;
+};
+
+export type ReviewAnalysisResult = {
+  aspects: ReviewAnalysisAspect[];
+  prompt_version?: string;
+  model?: string;
+};
+
+export type CustomerReview = {
+  id: string;
+  order_id: string;
+  menu_item_id?: string | null;
+  rating: number;
+  comment: string;
+  analysis_status: string;
+  created_at: string;
+  order_number?: string | null;
+  table_name_snapshot?: string | null;
+  floor_name_snapshot?: string | null;
+  waiter_name?: string | null;
+  order_time?: string | null;
+  order_items?: Array<{
+    menu_item_id: string;
+    name: string;
+    quantity: number;
+    price?: string;
+  }>;
+  analysis_result?: ReviewAnalysisResult | null;
+};
