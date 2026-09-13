@@ -448,3 +448,391 @@ export function ForecastsPanel() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="item-run-action">
+              <button
+                type="button"
+                className="action-btn primary small"
+                disabled={triggeringItem === selectedItemId}
+                onClick={() => void handleRunSingleForecast(selectedItemId)}
+              >
+                {triggeringItem === selectedItemId ? (
+                  <LoaderCircle size={13} className="spin" />
+                ) : (
+                  <RotateCcw size={13} />
+                )}
+                <span>Prepare next-month plan</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Focused Item Analysis Card */}
+          {focusedItem && (
+            <div className="forecast-card-deepdive">
+              <div className="deepdive-header">
+                <div>
+                  <h3 className="item-title">{focusedItem.name}</h3>
+                  <span className="item-meta">
+                    Category: {focusedItem.category} · Price: {money(focusedItem.selling_price)}
+                  </span>
+                </div>
+                {focusedResult?.model && (
+                  <span className="selected-model-pill">
+                    Forecast ready
+                  </span>
+                )}
+              </div>
+
+              {/* Status: Completed vs Insufficient History */}
+              {focusedResult?.status === 'completed' ? (
+                <>
+                  {/* Next-Month Monthly Forecast & Uncertainty Gauge */}
+                  <div className="demand-projection-box">
+                    <div className="projection-main-stat">
+                      <div className="stat-caption">Predicted Demand for Next Month:</div>
+                      <div className="stat-number">
+                        {Math.round(focusedResult.monthly_quantity || 0)}{' '}
+                        <span className="stat-unit">units</span>
+                      </div>
+                      <div className="stat-period">
+                        Horizon: {focusedResult.target_start} ➔ {focusedResult.target_end}
+                      </div>
+                    </div>
+
+                    <div className="uncertainty-range-stat">
+                      <div className="range-caption">
+                        Likely demand range (80% confidence):
+                      </div>
+                      <div className="range-bounds">
+                        <span className="bound-val lower">
+                          P10: {Math.round(focusedResult.prediction_interval?.lower || 0)} units
+                        </span>
+                        <span className="bound-sep">➔</span>
+                        <span className="bound-val upper">
+                          P90: {Math.round(focusedResult.prediction_interval?.upper || 0)} units
+                        </span>
+                      </div>
+                      <div className="range-gauge-wrap">
+                        <div className="gauge-track">
+                          <div className="gauge-fill" />
+                          <div className="gauge-marker pin-expected" title="Expected" />
+                        </div>
+                        <div className="gauge-labels">
+                          <small>Min Order ({Math.round(focusedResult.prediction_interval?.lower || 0)})</small>
+                          <small>Expected ({Math.round(focusedResult.monthly_quantity || 0)})</small>
+                          <small>Max Buffer ({Math.round(focusedResult.prediction_interval?.upper || 0)})</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Kitchen & Procurement Recommendations */}
+                  <div className="operational-guidelines-box">
+                    <div className="guideline-item">
+                      <Package size={16} className="text-emerald-600" />
+                      <div>
+                        <strong>Procurement Guideline:</strong> Commit supplier purchase orders for at
+                        least {Math.round(focusedResult.prediction_interval?.lower || 0)} units of key
+                        ingredients to avoid stockouts.
+                      </div>
+                    </div>
+                    <div className="guideline-item">
+                      <ChefHat size={16} />
+                      <div>
+                        <strong>Kitchen Prep Guideline:</strong> Prepare weekend batch mise-en-place
+                        with surge capacity up to {Math.round(focusedResult.prediction_interval?.upper || 0)} units.
+                        Avoid holding perishable marinades beyond this limit.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SVG Daily Demand Curve Chart (Step 4.2) */}
+                  {chartData && (
+                    <div className="forecast-chart-container">
+                      <div className="chart-header">
+                        <div className="chart-title">
+                          <LineChart size={15} />
+                          <span>Expected daily demand for the next 30 days</span>
+                        </div>
+                        {hoveredDay && (
+                          <div className="chart-hover-pill">
+                            <strong>{hoveredDay.day}</strong>: {Math.round(hoveredDay.quantity)} units
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="svg-chart-wrapper">
+                        <svg
+                          viewBox={`0 0 ${chartData.chartWidth} ${chartData.chartHeight}`}
+                          className="forecast-svg"
+                        >
+                          {/* Uncertainty envelope shaded area */}
+                          <path d={chartData.areaD} className="svg-uncertainty-envelope" />
+
+                          {/* Grid reference lines */}
+                          <line
+                            x1="40"
+                            y1={chartData.chartHeight - 24}
+                            x2={chartData.chartWidth - 40}
+                            y2={chartData.chartHeight - 24}
+                            className="svg-grid-line"
+                          />
+
+                          {/* Daily Forecast Line */}
+                          <path d={chartData.pathD} className="svg-forecast-line" />
+
+                          {/* Daily Points */}
+                          {chartData.points.map((pt, i) => (
+                            <circle
+                              key={i}
+                              cx={pt.x}
+                              cy={pt.y}
+                              r={hoveredDay?.day === pt.day ? 5 : 3}
+                              className={`svg-point ${hoveredDay?.day === pt.day ? 'active' : ''}`}
+                              onMouseEnter={() => setHoveredDay({ day: pt.day, quantity: pt.quantity })}
+                              onMouseLeave={() => setHoveredDay(null)}
+                            />
+                          ))}
+                        </svg>
+                      </div>
+
+                      <div className="chart-footer-note">
+                        <span>Shaded area: likely lower-to-upper demand range</span>
+                        <span>Weekend peaks use the restaurant&apos;s recorded weekly sales pattern</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : focusedResult?.status === 'insufficient_history' ? (
+                <div className="insufficient-history-card">
+                  <AlertCircle size={28} className="text-amber-500" />
+                  <h4>More sales history is needed</h4>
+                  <p>
+                    This plan needs <strong>6 complete calendar months</strong> of daily sales. This dish is currently missing{' '}
+                    <strong>{focusedResult.missing_days} days</strong>.
+                  </p>
+                  <button
+                    type="button"
+                    className="action-btn soft small"
+                    onClick={() => setImportModalOpen(true)}
+                  >
+                    <UploadCloud size={14} />
+                    <span>Upload past sales file</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="no-forecast-card">
+                  <Clock size={28} className="text-gray-400" />
+                  <h4>No demand plan yet</h4>
+                  <p>Prepare a next-month plan for this dish when you are ready.</p>
+                  <button
+                    type="button"
+                    className="action-btn primary small"
+                    disabled={triggeringItem === selectedItemId}
+                    onClick={() => void handleRunSingleForecast(selectedItemId)}
+                  >
+                    <Play size={13} />
+                    <span>Prepare plan now</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: All Items Demand Ledger Table (Step 4.2) */}
+        <div className="forecast-ledger-pane">
+          <div className="ledger-header-row">
+            <h4>Dish planning</h4>
+            <div className="ledger-search-input">
+              <Search size={13} />
+              <input
+                type="text"
+                placeholder="Filter dishes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="forecast-table-wrap">
+            <table className="forecast-table">
+              <thead>
+                <tr>
+                  <th>Dish Name</th>
+                  <th>Next month</th>
+                  <th>Likely range</th>
+                  <th>Planning gap</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMenuItems.map((item) => {
+                  const run = latestRunByItem.get(item.id);
+                  const res = run?.result;
+                  const isSelected = item.id === selectedItemId;
+
+                  return (
+                    <tr
+                      key={item.id}
+                      className={isSelected ? 'row-selected' : ''}
+                      onClick={() => setSelectedItemId(item.id)}
+                    >
+                      <td>
+                        <div className="dish-name-cell">
+                          <strong>{item.name}</strong>
+                          <small>{item.category}</small>
+                        </div>
+                      </td>
+                      <td>
+                        {res?.status === 'completed' ? (
+                          <span className="forecast-qty-val">
+                            {Math.round(res.monthly_quantity || 0)} units
+                          </span>
+                        ) : res?.status === 'insufficient_history' ? (
+                          <span className="status-pill warning">Needs History</span>
+                        ) : (
+                          <span className="status-pill gray">Not Run</span>
+                        )}
+                      </td>
+                      <td>
+                        {res?.prediction_interval ? (
+                          <span className="interval-bounds-val">
+                            [{Math.round(res.prediction_interval.lower)} – {Math.round(res.prediction_interval.upper)}]
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td>
+                        {res?.metrics ? (
+                          <div className="model-metrics-cell">
+                            <span className="model-tag">Checked</span>
+                            <small>{(Number(res.metrics.wape || 0) * 100).toFixed(0)}% difference</small>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="icon-btn-small"
+                          title="Run Forecast"
+                          disabled={triggeringItem === item.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleRunSingleForecast(item.id);
+                          }}
+                        >
+                          {triggeringItem === item.id ? (
+                            <LoaderCircle size={13} className="spin" />
+                          ) : (
+                            <Play size={13} />
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* MODAL: HISTORICAL SALES CSV IMPORT (Step 4.4)             */}
+      {/* ========================================================= */}
+      {importModalOpen && (
+        <Modal
+          title="Import Past Sales"
+          onClose={() => {
+            if (!importing) setImportModalOpen(false);
+          }}
+        >
+          <div className="import-modal-body">
+            <p className="import-modal-desc">
+              If Smart Dine has less than 6 months of live records, upload your previous daily sales here.
+            </p>
+
+            <div className="csv-template-box">
+              <div className="template-info">
+                <strong>Required CSV Headers:</strong>
+                <code>day,menu_item_id,quantity,day_status</code>
+              </div>
+              <button
+                type="button"
+                className="action-btn soft small"
+                onClick={handleDownloadSampleCsv}
+              >
+                <FileDown size={13} />
+                <span>Download Sample Template</span>
+              </button>
+            </div>
+
+            <div className="import-field-group">
+              <label htmlFor="csv-source-name">Source Identifier:</label>
+              <input
+                id="csv-source-name"
+                type="text"
+                placeholder="e.g. Legacy POS 2025-2026 Archive"
+                value={csvSourceName}
+                onChange={(e) => setCsvSourceName(e.target.value)}
+              />
+            </div>
+
+            <div className="import-field-group">
+              <label htmlFor="csv-text-area">Paste CSV Data or Drag File:</label>
+              <textarea
+                id="csv-text-area"
+                rows={8}
+                placeholder={`day,menu_item_id,quantity,day_status\n2026-03-01,${menuItems[0]?.id || 'uuid'},25,complete\n2026-03-02,${menuItems[0]?.id || 'uuid'},0,closed`}
+                value={csvText}
+                onChange={(e) => setCsvText(e.target.value)}
+              />
+            </div>
+
+            {importError && (
+              <div className="decisions-alert error">
+                <AlertCircle size={15} />
+                <span>{importError}</span>
+              </div>
+            )}
+
+            {importSuccess && (
+              <div className="decisions-alert success">
+                <CheckCircle2 size={15} />
+                <span>
+                  Successfully imported {importSuccess.row_count} historical observations from &quot;
+                  {importSuccess.source_name}&quot;!
+                </span>
+              </div>
+            )}
+
+            <div className="modal-actions-bar">
+              <button
+                type="button"
+                className="soft-btn"
+                disabled={importing}
+                onClick={() => setImportModalOpen(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="action-btn primary"
+                disabled={importing || !csvText.trim()}
+                onClick={() => void handleImportSubmit()}
+              >
+                {importing ? <LoaderCircle size={15} className="spin" /> : <UploadCloud size={15} />}
+                <span>{importing ? 'Validating & Importing…' : 'Import Sales Data'}</span>
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </section>
+  );
+}
