@@ -110,3 +110,187 @@ class UserService:
 
         return {"status": "updated", "sign_in_required": True}
 
+    async def staff_ledger(self, actor):
+        await self._recheck_manager(actor)
+        pool = await get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT branch_id FROM private.profiles WHERE id = %s", (str(actor.id),)
+            )
+            b_row = await cur.fetchone()
+            if not b_row or not b_row[0]:
+                return {"items": [], "total": 0}
+            branch_id = str(b_row[0])
+
+            cur = await conn.execute(
+                """
+                SELECT id::text, full_name, email, role, staff_type, is_active, created_at
+                FROM private.profiles
+                WHERE branch_id = %s AND role = 'staff'
+                ORDER BY created_at ASC
+                """,
+                (branch_id,),
+            )
+            active_profiles = await cur.fetchall()
+
+            cur = await conn.execute(
+                """
+                SELECT 
+                    id::text, created_by::text, coalesce(created_by_name, ''), coalesce(created_by_email, ''),
+                    prepared_by::text, coalesce(prepared_by_name, ''), coalesce(prepared_by_email, ''),
+                    paid_by::text, coalesce(paid_by_name, ''), coalesce(paid_by_email, ''),
+                    ((select coalesce(sum(quantity * price_snapshot), 0) from private.order_items oi where oi.order_id = orders.id) - orders.discount + orders.tax) as total,
+                    created_at, completed_at
+                FROM private.orders
+                WHERE branch_id = %s
+                ORDER BY created_at ASC
+                """,
+                (branch_id,),
+            )
+            orders = await cur.fetchall()
+
+        ledger: dict[str, dict] = {}
+
+        # 1. Seed with known active profiles
+        for p in active_profiles:
+            email_key = p[2].casefold()
+            ledger[email_key] = {
+                "id": p[0],
+                "full_name": p[1],
+                "email": p[2],
+                "staff_type": p[4] or "waiter",
+                "is_active": bool(p[5]),
+                "first_action_at": p[6],
+                "last_action_at": p[6],
+                "orders_count": 0,
+                "orders_created": 0,
+                "orders_prepared": 0,
+                "orders_paid": 0,
+                "total_sales_cents": 0,
+            }
+
+        # 2. Iterate orders and attribute metrics to waiters, chefs, and cashiers
+        for o in orders:
+            order_total_cents = int(round(float(o[10] or 0) * 100))
+            order_time = o[11]
+
+            # Waiter attribution
+            w_email = (o[3] or "").strip()
+            w_name = (o[2] or "").strip()
+            if w_email:
+                w_key = w_email.casefold()
+                if w_key not in ledger:
+                    ledger[w_key] = {
+                        "id": o[1] or w_key,
+                        "full_name": w_name or w_email,
+                        "email": w_email,
+                        "staff_type": "waiter",
+                        "is_active": False,
+                        "first_action_at": order_time,
+                        "last_action_at": order_time,
+                        "orders_count": 0,
+                        "orders_created": 0,
+                        "orders_prepared": 0,
+                        "orders_paid": 0,
+                        "total_sales_cents": 0,
+                    }
+                rec = ledger[w_key]
+                rec["orders_created"] += 1
+                rec["orders_count"] += 1
+                rec["total_sales_cents"] += order_total_cents
+                if order_time < rec["first_action_at"]:
+                    rec["first_action_at"] = order_time
+                if order_time > rec["last_action_at"]:
+                    rec["last_action_at"] = order_time
+
+            # Chef attribution
+            c_email = (o[6] or "").strip()
+            c_name = (o[5] or "").strip()
+            if c_email:
+                c_key = c_email.casefold()
+                if c_key not in ledger:
+                    ledger[c_key] = {
+                        "id": o[4] or c_key,
+                        "full_name": c_name or c_email,
+                        "email": c_email,
+                        "staff_type": "kitchen",
+                        "is_active": False,
+                        "first_action_at": order_time,
+                        "last_action_at": order_time,
+                        "orders_count": 0,
+                        "orders_created": 0,
+                        "orders_prepared": 0,
+                        "orders_paid": 0,
+                        "total_sales_cents": 0,
+                    }
+                rec = ledger[c_key]
+                rec["orders_prepared"] += 1
+                rec["orders_count"] += 1
+                if order_time < rec["first_action_at"]:
+                    rec["first_action_at"] = order_time
+                if order_time > rec["last_action_at"]:
+                    rec["last_action_at"] = order_time
+
+            # Cashier attribution
+            k_email = (o[9] or "").strip()
+            k_name = (o[8] or "").strip()
+            if k_email:
+                k_key = k_email.casefold()
+                if k_key not in ledger:
+                    ledger[k_key] = {
+                        "id": o[7] or k_key,
+                        "full_name": k_name or k_email,
+                        "email": k_email,
+                        "staff_type": "cashier",
+                        "is_active": False,
+                        "first_action_at": order_time,
+                        "last_action_at": order_time,
+                        "orders_count": 0,
+                        "orders_created": 0,
+                        "orders_prepared": 0,
+                        "orders_paid": 0,
+                        "total_sales_cents": 0,
+                    }
+                rec = ledger[k_key]
+                rec["orders_paid"] += 1
+                rec["orders_count"] += 1
+                rec["total_sales_cents"] += order_total_cents
+                if order_time < rec["first_action_at"]:
+                    rec["first_action_at"] = order_time
+                if order_time > rec["last_action_at"]:
+                    rec["last_action_at"] = order_time
+
+        # Format items for UI output
+        items = []
+        for rec in ledger.values():
+            first_dt = rec["first_action_at"]
+            last_dt = rec["last_action_at"]
+            days = max(1, (last_dt - first_dt).days)
+            months = max(1, int(round(days / 30.0)))
+            f_str = first_dt.strftime("%b %Y")
+            l_str = last_dt.strftime("%b %Y")
+            
+            if rec["is_active"]:
+                tenure_label = f"Active {months} mo (since {f_str})" if months > 1 else f"Active (joined {f_str})"
+            else:
+                tenure_label = f"{months} mo ({f_str} – {l_str})" if f_str != l_str else f"1 mo ({f_str})"
+
+            items.append({
+                "id": str(rec["id"]),
+                "full_name": rec["full_name"],
+                "email": rec["email"],
+                "staff_type": rec["staff_type"],
+                "is_active": rec["is_active"],
+                "first_action_at": first_dt.isoformat(),
+                "last_action_at": last_dt.isoformat(),
+                "tenure_months": months,
+                "tenure_label": tenure_label,
+                "orders_count": rec["orders_count"],
+                "orders_created": rec["orders_created"],
+                "orders_prepared": rec["orders_prepared"],
+                "orders_paid": rec["orders_paid"],
+                "total_sales": f"{rec['total_sales_cents'] / 100:.2f}",
+            })
+
+        items.sort(key=lambda x: (not x["is_active"], -x["orders_count"], x["full_name"]))
+        return {"items": items, "total": len(items)}
