@@ -42,3 +42,66 @@ begin
  select * into prof from private.profiles where id=p_actor;
  is_mgr := (prof.role = 'manager');
 
+ -- 1. Cashier payment with discount support
+ if p_operation = 'order_pay' then
+  if prof.role <> 'manager' and prof.staff_type <> 'cashier' then
+   raise exception using errcode='42501',message='Cashier access required';
+  end if;
+  select * into o from private.orders where id=(p_payload->>'id')::uuid for update;
+  if not found then raise exception using errcode='P0002',message='Bill not found'; end if;
+  perform private.expect_version(o.version,(p_payload->>'expected_version')::integer);
+  if o.status <> 'ready' then raise exception using errcode='40001',message='Only ready, unpaid orders can be paid'; end if;
+  
+  subtot := (select coalesce(sum(quantity*price_snapshot),0) from private.order_items where order_id=o.id);
+  
+  -- Check for cashier discount
+  if p_payload ? 'discount_percent' and (p_payload->>'discount_percent')::numeric is not null then
+   disc_pct := round((p_payload->>'discount_percent')::numeric, 2);
+   if disc_pct < 0 or disc_pct > 100 then
+    raise exception using errcode='22023',message='Discount percent must be between 0 and 100';
+   end if;
+   disc_amt := round(subtot * (disc_pct / 100.0), 2);
+  elsif p_payload ? 'discount' and (p_payload->>'discount')::numeric is not null then
+   disc_amt := round((p_payload->>'discount')::numeric, 2);
+   if disc_amt < 0 or disc_amt > subtot then
+    raise exception using errcode='22023',message='Discount cannot exceed subtotal';
+   end if;
+   disc_pct := case when subtot > 0 then round((disc_amt / subtot) * 100.0, 2) else 0 end;
+  else
+   disc_amt := coalesce(o.discount, 0);
+   disc_pct := o.discount_percent;
+  end if;
+
+  update private.orders set
+   discount = disc_amt,
+   discount_percent = disc_pct,
+   discount_reason = nullif(btrim(p_payload->>'discount_reason'), '')
+  where id=o.id;
+
+  total := subtot - disc_amt + o.tax;
+  received := (p_payload->>'cash_received')::numeric;
+  if received is null or received < total or received <> round(received, 2) then
+   raise exception using errcode='22023',message='Cash received must cover the full bill';
+  end if;
+
+  update private.orders set
+   paid_by = p_actor,
+   cash_received = received,
+   change_given = received - total
+  where id=o.id;
+
+  result := private.command_core_before_cashier('order_transition', jsonb_build_object('id', o.id, 'expected_version', o.version, 'status', 'completed'), p_actor);
+  perform private.audit(p_actor, 'order_paid', 'orders', o.id, null, jsonb_build_object(
+   'subtotal', subtot,
+   'tax', o.tax,
+   'tax_rate', o.tax_rate_snapshot,
+   'discount', disc_amt,
+   'discount_percent', disc_pct,
+   'discount_reason', p_payload->>'discount_reason',
+   'total', total,
+   'cash_received', received,
+   'change_given', received - total
+  ));
+  return result;
+ end if;
+
