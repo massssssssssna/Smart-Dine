@@ -13,6 +13,8 @@ APIs:
 - `GET /api/v1/orders/bills?payment_status=unpaid|paid|all&limit=50&offset=0`
 - `GET /api/v1/orders/{id}/receipt`
 - `POST /api/v1/orders/{id}/pay`, with an Idempotency-Key and body `{ "expected_version": 3, "cash_received": "1000" }`
+- `POST /api/v1/reviews/tokens`, with body `{ "order_id": "..." }` to issue single-use scannable receipt review token
+- `GET /api/v1/reviews/token-info?token=...` to resolve public table and dish metadata for guest feedback
 
 Apply `supabase/migrations/20260910114914_cashier_billing.sql` before starting the updated API. This migration adds the cashier station, payment fields and database permissions. Existing completed orders remain paid; historical cash/change fields are blank when that information was not previously recorded.
 
