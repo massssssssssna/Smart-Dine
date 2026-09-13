@@ -18,6 +18,16 @@
 .barTrack{height:90px;display:flex;align-items:flex-end;justify-content:center;background:#eef6ee;border:1px solid #dceadc;border-radius:4px 4px 0 0;overflow:hidden}
 .barTrack i{display:block;width:56%;min-height:6px;background:linear-gradient(180deg,var(--gold),#a87822);border-radius:3px 3px 0 0}
 .monthBar strong{font-size:9px;margin-top:6px;white-space:nowrap}.monthBar span{font:13px var(--serif);margin-top:2px}.monthBar small{font-size:8px;color:var(--muted);margin-top:2px}
+
+.receiptQr{margin:16px auto 0;padding:15px 10px 10px;border:1px dashed #8ea397;border-radius:4px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;max-width:260px;background:#fff}
+.qrTitleRow{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#15241d}
+.qrImg{display:block;margin:7px auto 3px;border:0;padding:0;background:#fff;width:216px;height:216px;max-width:100%;aspect-ratio:1;object-fit:contain;image-rendering:pixelated}
+.qrSub{font-size:10px;color:#64748b}
+.qrReceipt{font-size:9px;color:#52675b;font-weight:700;overflow-wrap:anywhere}
+.qrLink{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#b48c36;text-decoration:underline;margin-top:4px}
+.qrLink:hover{color:#8c691b}
+.qrSetupNote{font-size:9px;line-height:1.4;color:#9a5d27;background:#fff6e7;border:1px solid #efd8ae;border-radius:3px;padding:5px 7px;margin-top:4px;max-width:260px}.qrError{font-size:10px;color:#9c2f2b}
+
 @media(max-width:760px){.historySummary{padding:16px}.monthBars{justify-content:start}}
 @media print{
  :global(.station-cashier>.sidebar),:global(.station-cashier>.workspace){display:none!important}
@@ -25,10 +35,13 @@
  :global(body *){visibility:hidden!important}
  :global(dialog[open]){position:absolute!important;inset:0!important;width:100%!important;max-width:none!important;max-height:none!important;height:auto!important;overflow:visible!important;border:0!important;box-shadow:none!important;margin:0!important}
  :global(dialog::backdrop){background:transparent!important;backdrop-filter:none!important}
- :global(dialog .modal-head),.controls{display:none!important}
+ :global(dialog .modal-head),.controls,.qrLink,.qrSetupNote{display:none!important}
  .receipt,.receipt *{visibility:visible!important}
  .receipt{width:76mm;max-width:100%;padding:4mm;margin:0 auto;position:absolute;top:0;left:0;right:0}
  .receipt table{table-layout:fixed}.receipt td{overflow-wrap:anywhere}.receipt th:first-child{width:36%}
+ .receiptQr{width:60mm;max-width:60mm;padding:3mm 2mm 2.5mm;break-inside:avoid;page-break-inside:avoid;background:#fff!important;border-color:#111!important}
+ .qrImg{width:52mm!important;height:52mm!important;max-width:none!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ .qrTitleRow{font-size:11pt}.qrSub{max-width:56mm;font-size:8pt;line-height:1.35}.qrReceipt{font-size:7.5pt}
  :global(body){background:white!important}
  @page{margin:5mm;size:auto}
 }
