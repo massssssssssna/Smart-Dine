@@ -9,6 +9,16 @@
 .total{border-top:1px solid #b9c8bf;padding-top:12px;font-weight:700;font-size:18px}
 .thanks{text-align:center;border-top:1px dashed #b9c8bf;padding-top:16px}
 .controls{padding:0 26px 26px}.buttons{justify-content:flex-end}.buttons button{flex:1}
+.historySummary{padding:18px 22px 20px;background:#fbfdf9;border-top:1px solid var(--line)}
+.historyTitle{display:flex;align-items:center;gap:10px;color:var(--forest);margin-bottom:16px}
+.historyTitle>div{display:flex;flex-direction:column;gap:2px}
+.historyTitle strong{font-size:13px}.historyTitle span{font-size:10px;color:var(--muted)}
+.monthBars{display:grid;grid-template-columns:repeat(7,minmax(74px,1fr));gap:14px;align-items:end;min-height:150px;overflow-x:auto;padding-bottom:3px}
+.monthBar{display:grid;grid-template-rows:90px auto auto auto;align-items:end;text-align:center;min-width:74px;color:var(--forest)}
+.barTrack{height:90px;display:flex;align-items:flex-end;justify-content:center;background:#eef6ee;border:1px solid #dceadc;border-radius:4px 4px 0 0;overflow:hidden}
+.barTrack i{display:block;width:56%;min-height:6px;background:linear-gradient(180deg,var(--gold),#a87822);border-radius:3px 3px 0 0}
+.monthBar strong{font-size:9px;margin-top:6px;white-space:nowrap}.monthBar span{font:13px var(--serif);margin-top:2px}.monthBar small{font-size:8px;color:var(--muted);margin-top:2px}
+@media(max-width:760px){.historySummary{padding:16px}.monthBars{justify-content:start}}
 @media print{
  :global(.station-cashier>.sidebar),:global(.station-cashier>.workspace){display:none!important}
  :global(.station-cashier){min-height:0!important;height:auto!important}
