@@ -7,6 +7,11 @@ from app.modules.inventory.service import InventoryService
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
 
+@router.get('/alerts')
+async def list_stock_alerts(gateway: GatewayDep, manager: ManagerDep):
+    return await InventoryService(gateway, manager.role).alerts()
+
+
 @router.get('/products')
 async def list_stock(gateway: GatewayDep, manager: ManagerDep, page: PageDep):
     return await InventoryService(gateway, manager.role).read('stock_products', page)
