@@ -82,6 +82,23 @@ async def test_inactive_login_revokes_session_and_returns_no_tokens(monkeypatch)
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("email", ["manager@smartdine.pk", "staff@example.com"])
+async def test_login_rejects_shared_fallback_password(monkeypatch, email):
+    _, gateway = gateways()
+    hashed = bcrypt.hashpw(b"account-specific-password", bcrypt.gensalt(4)).decode("utf-8")
+    pool, _ = make_mock_pool([
+        (UUID(USER_ID), email, hashed, "manager", "Account User", True),
+    ])
+    monkeypatch.setattr("app.modules.auth.service.get_pool", AsyncMock(return_value=pool))
+
+    with pytest.raises(AppError) as exc:
+        await AuthService(gateway).login(Login(email=email, password="SmartDine123!"))
+
+    assert exc.value.status_code == 401
+    assert exc.value.code == "invalid_credentials"
+
+
+@pytest.mark.asyncio
 async def test_account_creation_rechecks_manager_before_reserving():
     actor, gateway = gateways()
     gateway.read.return_value = {"id": USER_ID, "role": "staff", "is_active": True}
