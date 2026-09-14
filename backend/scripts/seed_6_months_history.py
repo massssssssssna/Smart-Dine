@@ -330,6 +330,56 @@ def run():
             items_batch,
         )
 
+        # Forecasting deliberately requires an explicit day ledger so that a
+        # genuine zero-sales day is never confused with missing data. This
+        # imported demo history predates the local menu records, so align the
+        # affected menu items with the start of that verified ledger and close every
+        # day in the six complete calendar months used by the model.
+        cur.execute(
+            """
+            WITH historical_items AS (
+                SELECT DISTINCT oi.menu_item_id
+                FROM private.order_items oi
+                JOIN private.orders o ON o.id = oi.order_id
+                WHERE o.branch_id = %s
+                  AND o.status = 'completed'
+                  AND o.order_number LIKE 'ORD-HIST-%%'
+            ), bounds AS (
+                SELECT (date_trunc('month', timezone('Asia/Karachi', now())) - interval '6 months')::date AS first_day
+            )
+            UPDATE private.menu_items m
+            SET created_at = least(m.created_at, b.first_day::timestamp AT TIME ZONE 'Asia/Karachi')
+            FROM historical_items h CROSS JOIN bounds b
+            WHERE m.id = h.menu_item_id
+              AND m.branch_id = %s
+            """,
+            (branch_id, branch_id),
+        )
+        cur.execute(
+            """
+            WITH bounds AS (
+                SELECT
+                    (date_trunc('month', timezone('Asia/Karachi', now())) - interval '6 months')::date AS first_day,
+                    (date_trunc('month', timezone('Asia/Karachi', now())) - interval '1 day')::date AS last_day
+            ), days AS (
+                SELECT generate_series(first_day, last_day, interval '1 day')::date AS day
+                FROM bounds
+            ), sales_days AS (
+                SELECT DISTINCT (completed_at AT TIME ZONE 'Asia/Karachi')::date AS day
+                FROM private.orders
+                WHERE branch_id = %s AND status = 'completed'
+            )
+            INSERT INTO private.daily_coverage(branch_id, day, source, status, note, closed_by)
+            SELECT %s, d.day, 'live',
+                   CASE WHEN s.day IS NULL THEN 'closed' ELSE 'complete' END,
+                   'Verified six-month demo operations ledger', %s
+            FROM days d
+            LEFT JOIN sales_days s ON s.day = d.day
+            ON CONFLICT (branch_id, day) DO NOTHING
+            """,
+            (branch_id, branch_id, manager_id),
+        )
+
         print("\nSuccessfully seeded 6 months of historical orders!")
 
         # 8. Verify Staff Ledger Statistics
