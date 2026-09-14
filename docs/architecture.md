@@ -30,3 +30,8 @@ Audit is append-only through internal routines. Financial snapshots preserve his
 
 ## Export and Reporting Pipeline
 Historical reports stream directly via `StreamingResponse` using in-memory byte buffers (`io.BytesIO`). Data isolation ensures kitchen displays cannot access financial details, while Excel exports employ leading-character sanitization against formula injection attacks (CWE-1236).
+
+### Order Lifecycle State Machine
+Orders follow strict state transitions:
+`created` -> `in_progress` -> `ready` -> `completed` (or `cancelled`).
+
