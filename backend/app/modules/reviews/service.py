@@ -1,4 +1,5 @@
 import hashlib
+import secrets
 from datetime import datetime, timezone
 from app.modules.common import payload
 from app.core.exceptions import AppError
@@ -74,7 +75,47 @@ class ReviewService:
                     return row["result"]
             except Exception:
                 pass
-        return await self.gateway.command("review_token_create", data, key)
+        try:
+            return await self.gateway.command("review_token_create", data, key)
+        except AppError as exc:
+            if exc.status_code != 409 or not hasattr(self.gateway, "query_one"):
+                raise
+
+            # A printed receipt can be opened again after its original raw token has
+            # left memory. Rotate only an unused token belonging to the signed-in
+            # actor's branch; submitted reviews remain immutable and single-use.
+            token = secrets.token_hex(32)
+            token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            row = await self.gateway.query_one(
+                """
+                UPDATE private.review_tokens rt
+                   SET token_hash = %s, expires_at = now() + interval '7 days'
+                  FROM private.orders o, private.profiles p
+                 WHERE rt.order_id = o.id
+                   AND p.id = auth.uid()
+                   AND o.branch_id = p.branch_id
+                   AND o.id = %s::uuid
+                   AND o.status = 'completed'
+                   AND rt.used_at IS NULL
+                RETURNING rt.order_id, rt.expires_at
+                """,
+                (token_hash, order_id),
+            )
+            if not row:
+                used = await self.gateway.query_one(
+                    """
+                    SELECT 1 FROM private.review_tokens rt
+                    JOIN private.orders o ON o.id = rt.order_id
+                    JOIN private.profiles p ON p.id = auth.uid()
+                    WHERE rt.order_id = %s::uuid AND o.branch_id = p.branch_id
+                      AND rt.used_at IS NOT NULL
+                    """,
+                    (order_id,),
+                )
+                if used:
+                    raise AppError("review_already_submitted", "Review already received for this receipt.", 409)
+                raise
+            return {"order_id": str(row["order_id"]), "token": token, "expires_at": row["expires_at"]}
 
     async def get_token_info(self, token: str) -> dict:
         token_clean = token.strip()

@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_actor, get_admin_gateway, get_gateway, get_public_gateway
 from app.core.security import Actor
+from app.core.exceptions import AppError
 from app.main import create_app
 
 MANAGER_ID = UUID("10000000-0000-4000-8000-000000000001")
@@ -157,6 +158,34 @@ def test_cashier_token_creation_endpoint(api_client):
     data = res.json()
     assert data["order_id"] == str(ORDER_ID)
     assert "token" in data
+
+
+def test_cashier_reopens_old_receipt_with_rotated_unused_token(api_client):
+    client, gateway, actor, _ = api_client
+    actor.role = "staff"
+    actor.staff_type = "cashier"
+    gateway.command.side_effect = AppError("40001", "Review token already issued; retry the original idempotency key", 409)
+    gateway.query_one.side_effect = [None, {"order_id": ORDER_ID, "expires_at": "2026-09-21T00:00:00Z"}]
+
+    res = client.post("/api/v1/reviews/tokens", json={"order_id": str(ORDER_ID)})
+
+    assert res.status_code == 201
+    assert res.json()["order_id"] == str(ORDER_ID)
+    assert len(res.json()["token"]) == 64
+    assert "o.branch_id = p.branch_id" in gateway.query_one.await_args_list[1].args[0]
+
+
+def test_cashier_reprint_explains_when_review_is_already_received(api_client):
+    client, gateway, actor, _ = api_client
+    actor.role = "staff"
+    actor.staff_type = "cashier"
+    gateway.command.side_effect = AppError("40001", "Review token already issued", 409)
+    gateway.query_one.side_effect = [None, None, {"?column?": 1}]
+
+    res = client.post("/api/v1/reviews/tokens", json={"order_id": str(ORDER_ID)})
+
+    assert res.status_code == 409
+    assert res.json()["message"] == "Review already received for this receipt."
 
 
 def test_manager_reviews_list_requires_manager(api_client):
