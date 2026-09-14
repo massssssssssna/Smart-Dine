@@ -25,6 +25,7 @@ async function loadEveryBill(firstPage:Page<Bill>):Promise<Bill[]>{
 
 export default function CashierWorkspace(){
  const [me,setMe]=useState<Profile|null>(null),[bills,setBills]=useState<Bill[]>([]),[allBills,setAllBills]=useState<Bill[]>([]),[filter,setFilter]=useState('unpaid'),[search,setSearch]=useState('');
+ const [section,setSection]=useState<'today'|'history'>('today'),[chartMode,setChartMode]=useState<'daily'|'monthly'>('daily');
  const [offset,setOffset]=useState(0),[total,setTotal]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(true),[selected,setSelected]=useState<ReceiptData|null>(null);
  const [cash,setCash]=useState(''),[discountPercent,setDiscountPercent]=useState('0'),[discountReason,setDiscountReason]=useState(''),[busy,setBusy]=useState(false),[paymentError,setPaymentError]=useState('');
  const [reviewToken,setReviewToken]=useState<string|null>(null),[reviewUrl,setReviewUrl]=useState<string|null>(null),[qrCodeDataUrl,setQrCodeDataUrl]=useState<string|null>(null),[loadingQr,setLoadingQr]=useState(false),[qrError,setQrError]=useState('');
@@ -134,7 +135,6 @@ export default function CashierWorkspace(){
   }finally{paying.current=false;setBusy(false);}
  }
  if(loading&&!me)return <main className="loading"><Brand/><p>Opening billing…</p>{error&&<p className="error">{error}</p>}</main>;
- const visible=bills.filter(b=>(b.id+' '+b.order_number+' '+b.floor_name_snapshot+' '+b.table_name_snapshot+' '+b.notes).toLowerCase().includes(search.toLowerCase()));
  const today=karachiDay(new Date().toISOString());
  const isMine=(bill:Bill)=>bill.paid_by===me?.id||bill.paid_by_email?.toLowerCase()===me?.email.toLowerCase();
  const completedBills=allBills.filter(b=>b.status==='completed'&&b.completed_at);
@@ -145,19 +145,25 @@ export default function CashierWorkspace(){
  const readyCount=allBills.filter(b=>b.status==='ready').length;
  const collectedByMe=myPaidBills.reduce((sum,b)=>sum+Number(b.total||0),0);
  const averageBill=myPaidBills.length?collectedByMe/myPaidBills.length:0;
+ const sectionBills=section==='history'?allBills:allBills.filter(b=>['pending','preparing','ready'].includes(b.status)||(b.status==='completed'&&isMine(b)&&!!b.completed_at&&karachiDay(b.completed_at)===today));
+ const filteredBills=sectionBills.filter(b=>filter==='all'||(filter==='paid'?b.status==='completed':['pending','preparing','ready'].includes(b.status)));
+ const visible=filteredBills.filter(b=>(b.id+' '+b.order_number+' '+b.floor_name_snapshot+' '+b.table_name_snapshot+' '+b.notes).toLowerCase().includes(search.toLowerCase()));
  const monthlyHistory=Object.entries(completedBills.reduce<Record<string,{count:number,total:number}>>((acc,bill)=>{
    const key=karachiDay(bill.completed_at as string).slice(0,7);
    acc[key]??={count:0,total:0};acc[key].count+=1;acc[key].total+=Number(bill.total||0);return acc;
  },{})).sort(([a],[b])=>a.localeCompare(b));
  const maxMonth=Math.max(1,...monthlyHistory.map(([,value])=>value.total));
+ const dailyHistory=Array.from({length:14},(_,index)=>{const day=new Date();day.setDate(day.getDate()-(13-index));const key=karachiDay(day.toISOString());const rows=completedBills.filter(b=>b.completed_at&&karachiDay(b.completed_at)===key);return [key,{count:rows.length,total:rows.reduce((sum,b)=>sum+Number(b.total||0),0)}] as const;});
+ const chartHistory=chartMode==='monthly'?monthlyHistory:dailyHistory;
+ const maxChart=Math.max(1,...chartHistory.map(([,value])=>value.total));
  return <div className="app-shell station-cashier">
-  <aside className="sidebar"><Link href="/"><Brand/></Link><span className="nav-caption">CASHIER STATION</span><nav><button className="nav-link active"><Receipt size={18}/>Bills & receipts</button></nav>
+  <aside className="sidebar"><Link href="/"><Brand/></Link><span className="nav-caption">CASHIER STATION</span><nav><button className={`nav-link ${section==='today'?'active':''}`} onClick={()=>{setSection('today');setFilter('unpaid')}}><Receipt size={18}/>Today&apos;s billing</button><button className={`nav-link ${section==='history'?'active':''}`} onClick={()=>{setSection('history');setFilter('all')}}><CalendarDays size={18}/>Bill history</button></nav>
    <div className="sidebar-user"><span className="avatar">{me?.full_name.slice(0,1)}</span><div><strong>{me?.full_name}</strong><small>Cashier / Billing</small></div><button className="icon" aria-label="Sign out" onClick={async()=>{try{await api('auth/logout','POST');window.location.replace('/sign-in');}catch(e){setError((e as Error).message);}}}><LogOut size={18}/></button></div>
   </aside>
   <div className="workspace"><main className="workspace-main">
-   <div className="page-heading"><div><span className="eyebrow">PAYMENTS & RECEIPTS</span><h1>Cashier / Billing</h1><p className="muted">Review bills, receive payment and print receipts.</p></div></div>
-   <section className="role-suite panel" aria-label="Cashier performance snapshot">
-    <div className="panel-head role-suite-head"><div><span className="eyebrow">BILLING PERFORMANCE</span><h2>Six-month settlement history</h2><p className="muted">Complete paid and unpaid bill history recorded for this restaurant.</p></div><span className="role-live-chip"><i/> Live · Asia/Karachi</span></div>
+   <div className="page-heading"><div><span className="eyebrow">PAYMENTS & RECEIPTS</span><h1>{section==='history'?'Bill History':'Cashier / Billing'}</h1><p className="muted">{section==='history'?'Complete paid and unpaid billing record from the restaurant database.':'Review today’s bills, receive payment and print receipts.'}</p></div></div>
+   {section==='today'&&<section className="role-suite panel" aria-label="Cashier performance snapshot">
+    <div className="panel-head role-suite-head"><div><span className="eyebrow">BILLING PERFORMANCE</span><h2>{chartMode==='daily'?'Daily settlement activity':'Six-month settlement history'}</h2><p className="muted">Paid bills recorded in the restaurant database.</p></div><div className="period-switch"><button className={chartMode==='daily'?'selected':''} onClick={()=>setChartMode('daily')}>Last 14 days</button><button className={chartMode==='monthly'?'selected':''} onClick={()=>setChartMode('monthly')}>By month</button></div></div>
     <div className="role-metric-grid">
      {[
       {label:'Unpaid queue',value:unpaidCount,note:`${readyCount} ready to collect`,icon:ListChecks},
@@ -167,18 +173,17 @@ export default function CashierWorkspace(){
      ].map(({label,value,note,icon:Icon})=><article className="role-metric" key={label}><span className="role-metric-icon"><Icon size={17}/></span><div><small>{label}</small><strong>{value}</strong><span>{note}</span></div></article>)}
     </div>
     <div className={styles.historySummary}>
-      <div className={styles.historyTitle}><CalendarDays size={17}/><div><strong>Restaurant collection by month</strong><span>{completedBills.length} settled bills · {money(completedBills.reduce((sum,bill)=>sum+Number(bill.total||0),0))} recorded</span></div></div>
+      <div className={styles.historyTitle}><CalendarDays size={17}/><div><strong>Restaurant collection {chartMode==='daily'?'by day':'by month'}</strong><span>{completedBills.length} settled bills · {money(completedBills.reduce((sum,bill)=>sum+Number(bill.total||0),0))} recorded</span></div></div>
       <div className={styles.monthBars}>
-        {monthlyHistory.map(([month,value])=><div className={styles.monthBar} key={month} title={`${monthLabel(month)}: ${value.count} bills, ${money(value.total)}`}><div className={styles.barTrack}><i style={{height:`${Math.max(6,(value.total/maxMonth)*100)}%`}}/></div><strong>{money(value.total)}</strong><span>{monthLabel(month)}</span><small>{value.count} bills</small></div>)}
+        {chartHistory.map(([key,value])=><div className={styles.monthBar} key={key} title={`${key}: ${value.count} bills, ${money(value.total)}`}><div className={styles.barTrack}><i style={{height:`${Math.max(6,(value.total/maxChart)*100)}%`}}/></div><strong>{money(value.total)}</strong><span>{chartMode==='monthly'?monthLabel(key):new Date(`${key}T12:00:00`).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</span><small>{value.count} bills</small></div>)}
       </div>
     </div>
-   </section>
-   <div className={styles.toolbar}><div className={styles.filters}>{['unpaid','paid','all'].map(value=><button key={value} className={filter===value?'':'soft'} onClick={()=>{setFilter(value);setOffset(0);}}>{value==='all'?'All bills':value==='paid'?'Paid':'Unpaid'}</button>)}</div><label className="search"><Search size={16}/><input aria-label="Search bills" placeholder="Search bill or table on this page…" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>
+   </section>}
+   <div className={styles.toolbar}>{section==='today'?<div className={styles.filters}>{['unpaid','paid'].map(value=><button key={value} className={filter===value?'':'soft'} onClick={()=>{setFilter(value);setOffset(0);}}>{value==='paid'?"Paid today":'Unpaid'}</button>)}</div>:<div><strong>All recorded bills</strong><div className="muted">Newest bills appear first</div></div>}<label className="search"><Search size={16}/><input aria-label="Search bills" placeholder="Search bill, receipt or table…" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>
    {error&&<p className="error" role="alert">{error}</p>}
-   <section className="panel"><div className="panel-head"><h2>{filter==='paid'?'Paid bills':filter==='unpaid'?'Unpaid bills':'All bills'}</h2><span className="muted">{total} bills</span></div>
+   <section className="panel"><div className="panel-head"><h2>{section==='history'?'Bill history':filter==='paid'?"Today's paid bills":"Today's billing queue"}</h2><span className="muted">{visible.length} bills</span></div>
     <div className="table-wrap"><table><thead><tr><th>Bill / table</th><th>Time</th><th>Total</th><th>Payment</th><th>Order</th><th>Action</th></tr></thead><tbody>{visible.map(b=><tr key={b.id}><td><strong>{b.order_number||b.id}</strong><div>{[b.floor_name_snapshot,b.table_name_snapshot].filter(Boolean).join(' · ')||b.notes.split('\n')[0]||'Dining order'}</div></td><td>{time(b.created_at)}</td><td>{money(b.total)}</td><td><span className={`badge ${b.status==='completed'?'active':b.status==='cancelled'?'inactive':'pending'}`}>{b.status==='completed'?'Paid':b.status==='cancelled'?'Cancelled':'Unpaid'}</span></td><td>{b.status==='completed'?'Completed':b.status}</td><td><button className="soft" onClick={()=>void openBill(b)}>View bill</button></td></tr>)}</tbody></table></div>
     {!visible.length&&<Empty>No bills in this view.</Empty>}
-    {total>50&&<div className="pagination"><button disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-50))}>Previous</button><span>{offset+1}–{Math.min(offset+50,total)} of {total}</span><button disabled={offset+50>=total} onClick={()=>setOffset(offset+50)}>Next</button></div>}
    </section>
   </main></div>
   {selected&&<Modal title={selected.status==='completed'?'Payment receipt':'Customer bill'} preventClose={busy} onClose={()=>{setSelected(null);setPaymentError('');}}>

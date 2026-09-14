@@ -35,10 +35,11 @@ import {
   ProcessingJob,
   HistoryImportResult,
   Page,
+  Order,
 } from '@/lib/api';
 import { Modal } from './ui';
 
-export function ForecastsPanel() {
+export function ForecastsPanel({ orders = [] }: { orders?: Order[] }) {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [forecastRuns, setForecastRuns] = useState<ForecastRun[]>([]);
   const [jobs, setJobs] = useState<ProcessingJob[]>([]);
@@ -148,6 +149,17 @@ export function ForecastsPanel() {
   }, [focusedItem, latestRunByItem]);
 
   const focusedResult = focusedForecastRun?.result;
+  const actualDaily = useMemo(() => {
+    if (!focusedItem) return [];
+    const totals = new Map<string, number>();
+    orders.filter(order => order.status === 'completed').forEach(order => order.items.forEach(item => {
+      if (item.menu_item_id === focusedItem.id) {
+        const day = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Karachi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(order.completed_at || order.created_at));
+        totals.set(day,(totals.get(day)||0)+item.quantity);
+      }
+    }));
+    return [...totals.entries()].sort(([a],[b])=>a.localeCompare(b)).slice(-14);
+  }, [focusedItem, orders]);
 
   // Global aggregate metrics for Overview Header (Step 4.1)
   const aggregateMetrics = useMemo(() => {
@@ -498,6 +510,7 @@ export function ForecastsPanel() {
                       <div className="stat-period">
                         Horizon: {focusedResult.target_start} ➔ {focusedResult.target_end}
                       </div>
+                      <div className="forecast-revenue">Expected sales value <strong>{money(Number(focusedResult.monthly_quantity || 0) * Number(focusedItem.selling_price || 0))}</strong></div>
                     </div>
 
                     <div className="uncertainty-range-stat">
@@ -525,6 +538,11 @@ export function ForecastsPanel() {
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="actual-sales-strip">
+                    <div><strong>Recent daily sales</strong><span>Actual completed portions from the database</span></div>
+                    <div className="actual-sales-bars">{actualDaily.map(([day,value])=><span key={day} title={`${day}: ${value} units`}><i style={{height:`${Math.max(8,(value/Math.max(1,...actualDaily.map(([,v])=>v)))*100)}%`}}/><small>{new Date(`${day}T12:00:00`).getDate()}</small></span>)}</div>
                   </div>
 
                   {/* Kitchen & Procurement Recommendations */}

@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { LayoutDashboard, UtensilsCrossed, ChefHat, Globe, LogOut, Plus, Search, Users, BookOpen, Package, Check, Clock, ArrowRight, History, Award, Receipt, TrendingUp, ShieldCheck, LineChart, Sparkles, UserRound, CookingPot, CreditCard, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, UtensilsCrossed, ChefHat, Globe, LogOut, Plus, Search, Users, BookOpen, Package, Check, Clock, ArrowRight, History, Award, Receipt, TrendingUp, ShieldCheck, LineChart, Sparkles, UserRound, CookingPot, CreditCard, MessageSquare, Bell, X, AlertTriangle } from 'lucide-react';
 import { api, ApiError, Profile, MenuItem, Order, StaffLedgerItem, Page, money } from '@/lib/api';
 import { Brand, Badge, Empty, Modal, Field } from './ui';
 import { MenuForm, OrderForm, StaffForm, CredentialsForm, RecipeForm } from './workspace-forms';
@@ -17,8 +17,10 @@ import { RoleInsights } from './role-insights';
 import { useConfirmation } from './use-confirmation';
 
 type Editor = { kind: 'order' | 'menu' | 'staff' | 'credentials' | 'recipe'; item?: Order | MenuItem | Profile };
+type StockAlert = {id:string;name:string;stock_quantity:number|string;reorder_level:number|string;unit?:string};
 const nextStatus: Record<string, string> = { pending: 'preparing', preparing: 'ready', ready: 'completed' };
 const labels: Record<string, string> = { preparing: 'Start preparation', ready: 'Ready for pickup', completed: 'Served & paid' };
+const karachiDay = (value:string) => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Karachi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
 
 async function loadEveryOrder(firstPage:Page<Order>,query:string):Promise<Order[]>{
   const pageSize=100;
@@ -52,6 +54,8 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
   const [updated, setUpdated] = useState('');
   const [ticketFilter, setTicketFilter] = useState('all');
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [stockItems, setStockItems] = useState<StockAlert[]>([]);
+  const [alertsOpen, setAlertsOpen] = useState(false);
 
   // Global Ctrl+K / Cmd+K shortcut to toggle AI Assistant for manager
   useEffect(() => {
@@ -107,12 +111,14 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
       setTotal(o.total);
       setMenu(m.items);
       if (isManager) {
-        const [s, ledgerRes] = await Promise.all([
+        const [s, ledgerRes, alertsRes] = await Promise.all([
           api<Page<Profile>>('users?limit=100'),
           api<{ items: StaffLedgerItem[]; total: number }>('users/ledger/history').catch(() => ({ items: [], total: 0 })),
+          api<{items:StockAlert[];total:number}>('inventory/alerts').catch(() => ({items:[],total:0})),
         ]);
         setStaff(s.items);
         setStaffLedger(ledgerRes.items);
+        setStockItems(alertsRes.items);
       }
       setUpdated(new Date().toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }));
       setError('');
@@ -253,13 +259,27 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
     },
     {
       label: 'Served & Paid Today',
-      value: waiterOrders.filter(o => o.status === 'completed').length,
-      note: 'Your settled orders in view',
+      value: waiterOrders.filter(o => o.status === 'completed' && karachiDay(o.completed_at || o.created_at) === karachiDay(new Date().toISOString())).length,
+      note: 'Your settled orders today',
       icon: BookOpen,
     },
   ];
 
   const stats = portal === 'manager' ? managerStats : waiterStats;
+  const stockAlerts = stockItems.filter(item => Number(item.stock_quantity) <= Number(item.reorder_level));
+  const recentCompleted = orders.filter(order => order.status === 'completed' && Date.now() - new Date(order.completed_at || order.created_at).getTime() <= 30 * 86400000);
+  const activeDays = Math.max(1, new Set(recentCompleted.map(order => karachiDay(order.completed_at || order.created_at))).size);
+  const expectedCustomers = Math.round(recentCompleted.reduce((sum,order)=>sum+Number(order.seats_snapshot || 1),0)/activeDays);
+  const expectedDailySales = recentCompleted.reduce((sum,order)=>sum+Number(order.total || 0),0)/activeDays;
+  const managerSalesFlow = (() => {
+    const daily = new Map<string,{sales:number;guests:number}>();
+    orders.filter(order=>order.status==='completed').forEach(order=>{const key=karachiDay(order.completed_at||order.created_at);const row=daily.get(key)||{sales:0,guests:0};row.sales+=Number(order.total||0);row.guests+=Number(order.seats_snapshot||1);daily.set(key,row)});
+    const history=[...daily.entries()].map(([day,value])=>({day,...value,date:new Date(`${day}T12:00:00`)}));
+    const actual=Array.from({length:15},(_,index)=>{const date=new Date();date.setDate(date.getDate()-(14-index));const day=karachiDay(date.toISOString());return {day,sales:daily.get(day)?.sales||0,guests:daily.get(day)?.guests||0,kind:'actual' as const};});
+    const forecast=Array.from({length:15},(_,index)=>{const date=new Date();date.setDate(date.getDate()+index+1);const matches=history.filter(row=>row.date.getDay()===date.getDay()).slice(-26);return {day:karachiDay(date.toISOString()),sales:matches.length?matches.reduce((sum,row)=>sum+row.sales,0)/matches.length:expectedDailySales,guests:matches.length?matches.reduce((sum,row)=>sum+row.guests,0)/matches.length:expectedCustomers,kind:'forecast' as const};});
+    return [...actual,...forecast];
+  })();
+  const maxManagerFlow=Math.max(1,...managerSalesFlow.map(point=>point.sales));
 
   // ONLY show full-screen branded loader during initial cold authentication
   if (!isReady) {
@@ -378,6 +398,10 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
             )}
             {portal === 'manager' && (
               <div className="header-manager-actions">
+                <div className="alerts-anchor">
+                  <button type="button" className="notification-bell" aria-label={`${stockAlerts.length} stock alerts`} onClick={()=>setAlertsOpen(value=>!value)}><Bell size={17}/>{stockAlerts.length>0&&<b>{stockAlerts.length}</b>}</button>
+                  {alertsOpen&&<section className="stock-alert-popover"><header><div><strong>Stock alerts</strong><span>Items needing attention</span></div><button className="icon" aria-label="Close alerts" onClick={()=>setAlertsOpen(false)}><X size={15}/></button></header>{stockAlerts.length?stockAlerts.slice(0,8).map(item=><button key={item.id} className="stock-alert-row" onClick={()=>{setAlertsOpen(false);setTab('stock')}}><AlertTriangle size={15}/><span><strong>{item.name}</strong><small>{Number(item.stock_quantity)===0?'Out of stock':`${Number(item.stock_quantity)} ${item.unit||'units'} left · reorder at ${Number(item.reorder_level)}`}</small></span></button>):<p className="stock-alert-clear"><Check size={15}/> Stock levels look healthy.</p>}<button className="stock-alert-footer" onClick={()=>{setAlertsOpen(false);setTab('stock')}}>Open inventory →</button></section>}
+                </div>
                 <button
                   type="button"
                   className="assistant-header-btn"
@@ -412,6 +436,13 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                     </article>
                   ))}
                 </div>
+              )}
+              {portal === 'manager' && (
+                <section className="manager-outlook-wrap" aria-label="Daily customer and sales outlook">
+                  <div className="manager-outlook"><div><span className="eyebrow">SIX-MONTH SALES PATTERN</span><h2>15-day sales outlook</h2><p>Actual sales flow into a weekday-based estimate for the next 15 days.</p></div><article><small>Expected customers</small><strong>{expectedCustomers}</strong><span>guests on a typical day</span></article><article><small>Expected daily sales</small><strong>{money(expectedDailySales)}</strong><span>current 30-day pace</span></article><article className="busy-outlook"><small>Busy-day possibility</small><strong>{money(expectedDailySales*1.2)}</strong><span>up to 20% above usual · around {Math.ceil(expectedCustomers*1.2)} guests</span></article></div>
+                  <div className="manager-flow-head"><div><strong>Daily sales: actual → expected</strong><span>Hover any day for sales and guest count</span></div><div><span><i className="actual-key"/>Actual</span><span><i className="forecast-key"/>Expected</span></div></div>
+                  <div className="manager-sales-flow">{managerSalesFlow.map((point,index)=><span key={point.day} className={point.kind} title={`${point.day} · ${point.kind==='actual'?'Actual':'Expected'} ${money(point.sales)} · ${Math.round(point.guests)} guests`}><i style={{height:`${Math.max(point.sales?7:2,(point.sales/maxManagerFlow)*100)}%`}}/><small>{new Date(`${point.day}T12:00:00`).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</small>{index===14&&<b>Today</b>}</span>)}</div>
+                </section>
               )}
               {portal === 'kitchen' && (
                 <>
@@ -1027,7 +1058,7 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
           {tab === 'tables' && <TablesPanel />}
           {portal === 'manager' && tab === 'expenses' && <ExpensesPanel onChanged={() => void load()} />}
           {portal === 'manager' && tab === 'analytics' && <AnalyticsPanel />}
-          {portal === 'manager' && tab === 'forecasts' && <ForecastsPanel />}
+          {portal === 'manager' && tab === 'forecasts' && <ForecastsPanel orders={orders} />}
           {portal === 'manager' && tab === 'decisions' && <DecisionsAuditPanel />}
           {portal === 'manager' && tab === 'reviews' && <ReviewsPanel />}
         </main>
