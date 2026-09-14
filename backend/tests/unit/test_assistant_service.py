@@ -96,7 +96,7 @@ def test_guardrail_rejects_secret_and_prompt_extraction_requests():
 def test_greetings_receive_friendly_english_without_analytics():
     answer = friendly_small_talk("Hi, how are u?")
     assert answer is not None
-    assert "how are you" in answer.casefold()
+    assert "how can i help" in answer.casefold()
     assert friendly_small_talk("Which dishes sold most?") is None
 
 
@@ -110,6 +110,29 @@ def test_greeting_prefix_does_not_hide_restaurant_question(question):
     assert friendly_small_talk(question) is None
 
 
-@pytest.mark.parametrize("question", ["Hi!", "Hello there.", "Hey", "Salam", "How are you?"])
-def test_standalone_greetings_still_receive_small_talk(question):
-    assert friendly_small_talk(question) is not None
+@pytest.mark.parametrize("question,expected_snippet", [
+    ("Hi, how are u?", "how can i help"),
+    ("Hello there", "how can i help"),
+    ("Salam", "wa alaikum assalam"),
+    ("kya hal hai", "main theek hoon"),
+    ("Thank you so much", "you're welcome"),
+    ("Shukriya", "aapka shukriya"),
+    ("Goodbye", "goodbye"),
+    ("Allah hafiz", "allah hafiz"),
+])
+def test_small_talk_matches_input_language(question, expected_snippet):
+    answer = friendly_small_talk(question)
+    assert answer is not None
+    assert expected_snippet in answer.casefold()
+
+
+@pytest.mark.asyncio
+async def test_standalone_greeting_answer_question_bypasses_db_audit():
+    gateway, admin = AsyncMock(), AsyncMock()
+    prepare_admin(admin)
+    body = Question(question="Hi!", start_date=date(2026, 8, 1), end_date=date(2026, 8, 31))
+    result = await answer_question(body, ACTOR, gateway, admin, client=fake_client())
+    assert result["model"] == "local-conversation"
+    assert "how can i help" in result["answer"].casefold()
+    assert admin.service.call_count == 0
+

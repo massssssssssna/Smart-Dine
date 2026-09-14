@@ -302,37 +302,52 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
     return parts.length > 0 ? parts : renderFormattedText(content, 'root');
   };
 
-  // Basic Markdown Formatter (bold, bullet points, headers)
+  // Basic Markdown Formatter (bold, bullet points, headers, emojis)
   const renderFormattedText = (text: string, keyPrefix: string) => {
     const lines = text.split('\n');
     return (
-      <span key={keyPrefix}>
+      <div key={keyPrefix} className="assistant-formatted-text">
         {lines.map((line, idx) => {
-          if (line.startsWith('### ')) {
-            return <strong key={idx} className="block mt-2 mb-1 text-sm text-forest font-semibold">{line.slice(4)}</strong>;
+          const trimmed = line.trim();
+          if (!trimmed) {
+            return <div key={idx} className="assistant-msg-spacer" />;
           }
-          if (line.startsWith('• ') || line.startsWith('- ')) {
+          if (trimmed.startsWith('### ')) {
+            return <div key={idx} className="assistant-msg-heading">{trimmed.slice(4)}</div>;
+          }
+          // Emoji status headlines, e.g. 🟢 **All Stock Healthy!**
+          if (/^[🟢🔴🟡📊📦💰✨👋💡]/.test(trimmed)) {
             return (
-              <span key={idx} className="block pl-3 text-xs leading-relaxed my-0.5">
-                <span className="text-forest mr-1.5">•</span>
-                {parseInlineBold(line.slice(2))}
-              </span>
+              <div key={idx} className="assistant-msg-status-line">
+                {parseInlineBold(trimmed)}
+              </div>
             );
           }
-          if (/^\d+\.\s/.test(line)) {
+          if (trimmed.startsWith('• ') || trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+            const bulletContent = trimmed.replace(/^[•\-\*]\s*/, '');
             return (
-              <span key={idx} className="block pl-3 text-xs leading-relaxed my-0.5">
-                {parseInlineBold(line)}
-              </span>
+              <div key={idx} className="assistant-msg-bullet">
+                <span className="bullet-dot">•</span>
+                <span className="bullet-text">{parseInlineBold(bulletContent)}</span>
+              </div>
+            );
+          }
+          if (/^\d+\.\s/.test(trimmed)) {
+            const numMatch = trimmed.match(/^(\d+\.)\s*(.*)$/);
+            return (
+              <div key={idx} className="assistant-msg-bullet">
+                <span className="bullet-num">{numMatch?.[1]}</span>
+                <span className="bullet-text">{parseInlineBold(numMatch?.[2] || '')}</span>
+              </div>
             );
           }
           return (
-            <span key={idx} className="block text-xs leading-relaxed">
+            <div key={idx} className="assistant-msg-line">
               {parseInlineBold(line)}
-            </span>
+            </div>
           );
         })}
-      </span>
+      </div>
     );
   };
 
@@ -340,7 +355,7 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
     const parts = str.split(/(\*\*[^*]+\*\*)/g);
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i} className="font-semibold text-forest">{part.slice(2, -2)}</strong>;
+        return <strong key={i} className="font-semibold text-emerald-950">{part.slice(2, -2)}</strong>;
       }
       return part;
     });
@@ -523,7 +538,11 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
                       </div>
 
                       <div className="bubble-content">
-                        {renderMessageContent(msg.content, msg.evidence)}
+                        {msg.role === 'user' ? (
+                          <div className="user-message-text">{msg.content}</div>
+                        ) : (
+                          renderMessageContent(msg.content, msg.evidence)
+                        )}
                       </div>
 
                       {/* Cited Evidence Badges Footer */}

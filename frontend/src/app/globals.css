@@ -1028,25 +1028,45 @@
 }
 
 .message-bubble {
-  max-width: 86%;
-  border-radius: 8px;
-  padding: 14px 16px;
-  font-size: 12.5px;
-  line-height: 1.55;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  max-width: 88%;
+  border-radius: 14px;
+  padding: 14px 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
 }
 
 .user-bubble {
-  background: var(--forest);
-  color: #ffffff;
-  border-top-right-radius: 2px;
+  background: linear-gradient(135deg, #073527 0%, #0d543e 100%);
+  color: #ffffff !important;
+  border-top-right-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.user-message-text {
+  color: #ffffff !important;
+  font-size: 13.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  font-weight: 500;
+}
+
+.user-bubble .bubble-content,
+.user-bubble .bubble-content * {
+  color: #ffffff !important;
 }
 
 .assistant-bubble {
   background: #ffffff;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-top-left-radius: 2px;
+  color: #1a2e26;
+  border: 1px solid #e2ece6;
+  border-top-left-radius: 3px;
+  box-shadow: 0 4px 16px rgba(7, 53, 39, 0.06);
+}
+
+.assistant-bubble:hover {
+  border-color: #cce2d6;
 }
 
 .bubble-header {
@@ -1054,9 +1074,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 8px;
-  font-size: 10.5px;
+  margin-bottom: 9px;
+  font-size: 11px;
   opacity: 0.85;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.06);
 }
 
 .bubble-author {
@@ -1070,11 +1092,104 @@
 }
 
 .user-bubble .bubble-header {
-  color: #c5dbcf;
+  color: #c4eedb !important;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.2);
+}
+
+.user-bubble .bubble-author {
+  color: #ffffff !important;
+}
+
+.user-bubble .bubble-time {
+  color: #b0dfc8 !important;
 }
 
 .assistant-bubble .bubble-header {
-  color: var(--muted);
+  color: #607b70;
+}
+
+/* Assistant Message Formatted Layout (Stylish Card / SMS Style) */
+.assistant-formatted-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.assistant-msg-status-line {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #043828;
+  padding: 5px 11px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  margin: 2px 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.assistant-msg-heading {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #043828;
+  margin: 6px 0 2px;
+}
+
+.assistant-msg-bullet {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 2.5px 6px 2.5px 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.assistant-msg-bullet:hover {
+  background: #f4faf6;
+}
+
+.bullet-dot {
+  color: #0f7652;
+  font-size: 15px;
+  line-height: 1;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.bullet-num {
+  color: #0f7652;
+  font-weight: 700;
+  font-size: 12px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.bullet-text {
+  flex: 1;
+  color: #1f382e;
+}
+
+.bullet-text strong,
+.assistant-msg-line strong,
+.assistant-msg-status-line strong {
+  font-weight: 700;
+  color: #043828;
+}
+
+.assistant-msg-line {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #1a2e26;
+  margin: 1px 0;
+}
+
+.assistant-msg-spacer {
+  height: 6px;
 }
 
 /* Step 5.4 — Clickable Evidence Chips */
