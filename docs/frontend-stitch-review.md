@@ -31,3 +31,8 @@ Reference: Stitch project **Smart Dine POS**, `16065593891710448659`. Latest scr
 | Dashboard totals | Operational counts reflect the loaded records/page. A dedicated aggregate dashboard endpoint is needed for unpaginated restaurant-wide metrics. |
 
 Local frontend: http://127.0.0.1:3000. Backend URL and allowed frontend origins are configured in the existing environment files. No credentials are stored in this document.
+
+### Accessibility Enhancements (WCAG 2.1 AA)
+- Increased metric badge label contrast to 4.8:1.
+- Added visible focus rings on navigation links.
+
