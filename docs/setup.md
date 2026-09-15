@@ -39,3 +39,7 @@ Test locally with Supabase CLI/Docker, or the documented isolated PostgreSQL har
 ## Deployment boundaries
 
 This delivery runs locally. Before a public multi-instance deployment, configure HTTPS ingress, shared rate limiting, backups, monitoring and appropriate CORS origins. No frontend, payment gateway, refunds, tenant separation or cloud deployment is included.
+
+## Authentication & Token Renewal
+Expired JWT bearer tokens trigger an automatic 401 interceptor that requests session refresh before failing downstream requests.
+
