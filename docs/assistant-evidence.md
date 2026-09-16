@@ -12,3 +12,7 @@ to support all 9 operational read tools:
 - recent_orders
 - manager_recommendations
 - staff_roster
+
+## Migration Details
+- Expands table-level constraints on `private.assistant_evidence`.
+- Supports null run_id for conversational small-talk messages.
