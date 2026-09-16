@@ -16,3 +16,6 @@ to support all 9 operational read tools:
 ## Migration Details
 - Expands table-level constraints on `private.assistant_evidence`.
 - Supports null run_id for conversational small-talk messages.
+
+## Stock Status Filtering
+Only ingredients linked to active menu items (`is_active = true`) are evaluated for low-stock warnings.
