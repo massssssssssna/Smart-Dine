@@ -22,8 +22,18 @@ async def test_server_controls_period_and_limits_and_labels_snapshot():
     gateway.read.return_value = {"items": [], "total": 0}
     period = {"start_date": "2026-08-01", "end_date": "2026-08-31"}
     data = await execute_read_tool("inventory_status", {}, gateway, period)
-    gateway.read.assert_awaited_once_with("inventory", {**period, "limit": 100, "offset": 0})
+    gateway.read.assert_awaited_once_with("inventory", {"limit": 100, "offset": 0})
     assert "Current inventory snapshot" in data["temporal_scope"]
+
+
+@pytest.mark.asyncio
+async def test_live_knowledge_tools_are_finite_and_read_current_records():
+    gateway = AsyncMock()
+    gateway.read.return_value = {"items": [], "total": 0}
+    period = {"start_date": "2026-08-01", "end_date": "2026-08-31"}
+    data = await execute_read_tool("menu_catalog", {}, gateway, period)
+    gateway.read.assert_awaited_once_with("menu", {"limit": 100, "offset": 0})
+    assert "next question" in data["temporal_scope"]
 
 
 def test_unknown_evidence_rejected():

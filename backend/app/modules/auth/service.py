@@ -6,7 +6,7 @@ import jwt
 
 from app.core.config import get_settings
 from app.core.exceptions import AppError
-from app.integrations.supabase_client import get_pool, make_gateway
+from app.integrations.supabase_client import get_pool
 
 
 class AuthService:

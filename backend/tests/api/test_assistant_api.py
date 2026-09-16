@@ -1,7 +1,7 @@
-from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -83,10 +83,10 @@ def test_assistant_validates_date_ordering_and_length(client_app):
     )
     assert res.status_code == 422
 
-    # Invalid: question too short (< 3 chars)
+    # Invalid: question too short; ordinary two-character greetings are allowed.
     res_short = client.post(
         "/api/v1/assistant",
-        json={"question": "hi", "start_date": "2026-09-01", "end_date": "2026-09-13"},
+        json={"question": "h", "start_date": "2026-09-01", "end_date": "2026-09-13"},
     )
     assert res_short.status_code == 422
 
@@ -123,3 +123,29 @@ def test_get_runs_reads_assistant_runs_gateway(client_app):
     res = client.get("/api/v1/assistant/runs?limit=10&offset=0")
     assert res.status_code == 200
     assert gateway.read.await_args.args == ("assistant_runs", {"limit": 10, "offset": 0})
+
+
+def test_voice_token_route_is_manager_only_and_returns_public_connection_data(client_app):
+    client, _, actor, _ = client_app
+    response = {
+        "token": "signed-participant-token",
+        "url": "wss://voice.example.test",
+        "room_name": "sd-voice-private",
+        "conversation_id": "20000000-0000-4000-8000-000000000002",
+        "expires_at": datetime(2026, 9, 15, 12, 10, tzinfo=timezone.utc),
+    }
+    with patch("app.modules.assistant.router.issue_voice_token", new=AsyncMock(return_value=response)):
+        result = client.post(
+            "/api/v1/assistant/voice/token",
+            json={"start_date": "2026-09-01", "end_date": "2026-09-15"},
+        )
+    assert result.status_code == 200
+    assert result.json()["url"] == "wss://voice.example.test"
+    assert result.json()["token"] == "signed-participant-token"
+
+    actor.role = "staff"
+    denied = client.post(
+        "/api/v1/assistant/voice/token",
+        json={"start_date": "2026-09-01", "end_date": "2026-09-15"},
+    )
+    assert denied.status_code == 403
