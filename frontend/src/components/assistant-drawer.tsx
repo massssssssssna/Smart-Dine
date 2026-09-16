@@ -2,16 +2,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Sparkles, X, Send, RotateCcw, ShieldCheck, History, Copy, Check, 
-  ChevronRight, ArrowRight, TrendingUp, AlertTriangle, MessageSquare, 
-  LineChart, Receipt, ExternalLink, RefreshCw, AlertCircle, Info, Database
+  TrendingUp, AlertTriangle, MessageSquare, LineChart, Receipt, ExternalLink,
+  RefreshCw, Info, Pencil, Trash2, Mic
 } from 'lucide-react';
 import { 
   api, ApiError,
   AssistantEvidence, AssistantQuestionRequest, AssistantQuestionResponse, 
-  AssistantChatMessage, AssistantRunRecord, Page
+  AssistantChatMessage, AssistantConversation, Page
 } from '@/lib/api';
-
-type DatePreset = '6m' | 'today' | '7d' | 'month' | '30d' | 'custom';
+import { LiveVoiceSession } from '@/components/live-voice-session';
 
 interface AssistantDrawerProps {
   isOpen: boolean;
@@ -56,11 +55,8 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingStep, setThinkingStep] = useState<string>('');
   
-  // Date Context State
-  const [datePreset, setDatePreset] = useState<DatePreset>('6m');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [dateLabel, setDateLabel] = useState('Preparing reporting range…');
 
   // Selected Evidence Inspector Modal
   const [inspectingEvidence, setInspectingEvidence] = useState<AssistantEvidence | null>(null);
@@ -68,8 +64,10 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
 
   // History Tab State
   const [showHistory, setShowHistory] = useState(false);
-  const [historyRuns, setHistoryRuns] = useState<AssistantRunRecord[]>([]);
+  const [historyRuns, setHistoryRuns] = useState<AssistantConversation[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   const [serviceNotice, setServiceNotice] = useState<string | null>(null);
 
@@ -77,26 +75,15 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Use the current local calendar date; the server interprets the range in Asia/Karachi.
-  const computeDateRange = useCallback((preset: DatePreset) => {
+  const computeDefaultRange = useCallback(() => {
     const karachiToday = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit'
     }).format(new Date());
     const [year, month, day] = karachiToday.split('-').map(Number);
     const today = new Date(Date.UTC(year, month - 1, day, 12));
-    let start = new Date(today);
-    let end = new Date(today);
-
-    if (preset === '6m') {
-      start.setUTCMonth(today.getUTCMonth() - 6);
-    } else if (preset === 'today') {
-      start = new Date(today);
-    } else if (preset === '7d') {
-      start.setUTCDate(today.getUTCDate() - 6);
-    } else if (preset === 'month') {
-      start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1, 12));
-    } else if (preset === '30d') {
-      start.setUTCDate(today.getUTCDate() - 29);
-    }
+    const start = new Date(today);
+    const end = new Date(today);
+    start.setUTCMonth(today.getUTCMonth() - 6);
 
     const sStr = start.toISOString().slice(0, 10);
     const eStr = end.toISOString().slice(0, 10);
@@ -104,13 +91,10 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
   }, []);
 
   useEffect(() => {
-    if (datePreset !== 'custom') {
-      const { sStr, eStr } = computeDateRange(datePreset);
-      setStartDate(sStr);
-      setEndDate(eStr);
-      setDateLabel(`Analyzing: ${sStr} to ${eStr} (Asia/Karachi)`);
-    }
-  }, [datePreset, computeDateRange]);
+    const { sStr, eStr } = computeDefaultRange();
+    setStartDate(sStr);
+    setEndDate(eStr);
+  }, [computeDefaultRange]);
 
   // Focus input when opened
   useEffect(() => {
@@ -143,13 +127,38 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
   const loadRuns = async () => {
     setLoadingHistory(true);
     try {
-      const res = await api<Page<AssistantRunRecord>>('assistant/runs?limit=25&offset=0');
+      const res = await api<Page<AssistantConversation>>('assistant/conversations');
       setHistoryRuns(res.items || []);
     } catch {
       // Ignored if runs table is empty or permission denied
     } finally {
       setLoadingHistory(false);
     }
+  };
+
+  const openConversation = async (id: string) => {
+    const conversation = await api<AssistantConversation>(`assistant/conversations/${id}`);
+    setConversationId(id);
+    setMessages((conversation.messages || []).map(message => ({
+      id: message.id, role: message.role, content: message.content,
+      timestamp: new Date(message.created_at).toLocaleTimeString('en-PK', {hour:'2-digit',minute:'2-digit'}),
+      status: 'completed'
+    })));
+    setShowHistory(false);
+  };
+
+  const renameConversation = async (conversation: AssistantConversation) => {
+    const title = prompt('Rename this conversation:', conversation.title)?.trim();
+    if (!title || title === conversation.title) return;
+    await api(`assistant/conversations/${conversation.id}`, 'PATCH', {title});
+    await loadRuns();
+  };
+
+  const removeConversation = async (conversation: AssistantConversation) => {
+    if (!confirm(`Delete “${conversation.title}”?`)) return;
+    await api(`assistant/conversations/${conversation.id}`, 'DELETE');
+    if (conversationId === conversation.id) { setConversationId(null); setMessages([]); }
+    await loadRuns();
   };
 
   // Submit Query to Assistant
@@ -181,10 +190,11 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
       const reqBody: AssistantQuestionRequest = {
         question: text,
         start_date: startDate,
-        end_date: endDate
+        end_date: endDate,
+        ...(conversationId ? {conversation_id: conversationId} : {})
       };
       const result = await api<AssistantQuestionResponse>('assistant/questions', 'POST', reqBody);
-
+      setConversationId(result.conversation_id);
       const assistantMessage: AssistantChatMessage = {
         id: assistantMsgId,
         role: 'assistant',
@@ -343,8 +353,18 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
   };
 
   const clearChat = () => {
-    if (confirm('Clear assistant conversation history?')) {
-      setMessages([]);
+    setConversationId(null);
+    setMessages([]);
+    setShowHistory(false);
+  };
+
+  const finishVoiceCall = async (id: string | null) => {
+    setVoiceOpen(false);
+    if (!id) return;
+    try {
+      await openConversation(id);
+    } catch {
+      setConversationId(id);
     }
   };
 
@@ -368,11 +388,19 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
               <div className="title-row">
                 <h2>Smart Dine Assistant</h2>
               </div>
-              <p className="subtitle">Answers based on recorded restaurant data</p>
+              <p className="subtitle">Aap ka restaurant operations partner</p>
             </div>
           </div>
 
           <div className="header-actions">
+            <button
+              type="button"
+              className={`icon-action-btn ${voiceOpen ? 'active' : ''}`}
+              onClick={() => setVoiceOpen(true)}
+              title="Start Live voice chat"
+            >
+              <Mic size={16} /><span>Live</span>
+            </button>
             <button 
               type="button" 
               className={`icon-action-btn ${showHistory ? 'active' : ''}`}
@@ -380,18 +408,20 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
                 setShowHistory(!showHistory);
                 if (!showHistory) loadRuns();
               }}
-              title="Previous questions"
+              title="Open saved chat history"
             >
               <History size={16} />
+              <span>History</span>
             </button>
             <button 
               type="button" 
               className="icon-action-btn"
               onClick={clearChat}
-              title="Clear Conversation"
+              title="Start a clean conversation"
               disabled={messages.length === 0}
             >
               <RotateCcw size={16} />
+              <span>New chat</span>
             </button>
             <button 
               type="button" 
@@ -399,7 +429,7 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
               onClick={onClose}
               title="Close Drawer (Esc)"
             >
-              <X size={18} />
+              <span className="assistant-close-mark" aria-hidden="true">×</span>
             </button>
           </div>
         </header>
@@ -411,81 +441,29 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
           </div>
         )}
 
-        {/* Step 5.2 — Context & Date Range Bar */}
-        <div className="assistant-context-bar">
-          <div className="context-header">
-            <span className="context-label">
-              <Database size={13} className="db-icon" />
-              {dateLabel}
-            </span>
-            <span className="grounded-lock-badge">
-              <ShieldCheck size={12} /> Recorded data
-            </span>
-          </div>
-
-          <div className="date-pills-row">
-            {(['6m', 'month', '30d', '7d', 'today', 'custom'] as DatePreset[]).map(preset => (
-              <button
-                key={preset}
-                type="button"
-                className={`context-pill ${datePreset === preset ? 'active' : ''}`}
-                onClick={() => setDatePreset(preset)}
-              >
-                {preset === '6m' ? '6 Months' : preset === 'month' ? 'This Month' : preset === '7d' ? 'Last 7 Days' : preset === '30d' ? 'Last 30 Days' : preset === 'today' ? 'Today' : 'Custom'}
-              </button>
-            ))}
-          </div>
-
-          {datePreset === 'custom' && (
-            <div className="custom-date-inputs">
-              <div>
-                <label>From:</label>
-                <input 
-                  type="date" 
-                  value={startDate} 
-                  onChange={e => {
-                    setStartDate(e.target.value);
-                    setDateLabel(`Analyzing: ${e.target.value} to ${endDate} (Asia/Karachi)`);
-                  }} 
-                />
-              </div>
-              <div>
-                <label>To:</label>
-                <input 
-                  type="date" 
-                  value={endDate} 
-                  onChange={e => {
-                    setEndDate(e.target.value);
-                    setDateLabel(`Analyzing: ${startDate} to ${e.target.value} (Asia/Karachi)`);
-                  }} 
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* Body View: History vs Chat */}
         {showHistory ? (
           <div className="history-pane">
             <div className="history-header">
-              <h3>Previous Questions</h3>
+              <h3>Chat History</h3>
               <button type="button" onClick={loadRuns} disabled={loadingHistory} className="refresh-runs-btn">
                 <RefreshCw size={13} className={loadingHistory ? 'spin' : ''} /> Refresh
               </button>
             </div>
             {historyRuns.length === 0 ? (
-              <div className="empty-history">No previous questions recorded yet.</div>
+              <div className="empty-history">No saved conversations yet.</div>
             ) : (
               <div className="runs-list">
                 {historyRuns.map(run => (
-                  <div key={run.id} className="history-run-card">
+                  <div key={run.id} className="history-run-card" role="button" tabIndex={0} onClick={() => openConversation(run.id)}>
                     <div className="run-meta">
-                      <span className="run-status completed">{run.status}</span>
-                      <small>{new Date(run.created_at).toLocaleString('en-PK')}</small>
+                      <span className="run-status completed">{run.message_count || 0} messages</span>
+                      <small>{new Date(run.updated_at).toLocaleString('en-PK')}</small>
                     </div>
-                    <p className="run-question">"{run.question}"</p>
-                    <div className="run-period">
-                      Period: {run.period?.start_date} → {run.period?.end_date}
+                    <p className="run-question">{run.title}</p>
+                    <div className="conversation-actions">
+                      <button type="button" title="Rename" onClick={event => {event.stopPropagation(); renameConversation(run);}}><Pencil size={13}/></button>
+                      <button type="button" title="Delete" onClick={event => {event.stopPropagation(); removeConversation(run);}}><Trash2 size={13}/></button>
                     </div>
                   </div>
                 ))}
@@ -502,7 +480,7 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
                 </div>
                 <h3>Welcome, General Manager</h3>
                 <p>
-                  Ask any analytical or operational question. Answers are cross-checked with verified dining room orders, kitchen stock, and cashier receipts.
+                  Ask about sales, orders, new dishes, expenses, stock, forecasts, or customer reviews. Every answer checks the latest restaurant records.
                 </p>
 
                 {/* Step 5.3 — Quick Suggested Prompt Chips */}
@@ -628,7 +606,7 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
                   handleSend();
                 }
               }}
-              placeholder="Ask anything about sales, ingredients, margins, or complaints..."
+              placeholder="Ask about today’s operations, reviews, stock, dishes, or expenses..."
               rows={2}
               maxLength={2000}
               disabled={isThinking}
@@ -643,14 +621,19 @@ export function AssistantDrawer({ isOpen, onClose }: AssistantDrawerProps) {
             </button>
           </form>
 
-          {/* Audited Disclaimer Footer */}
-          <div className="assistant-disclaimer">
-            <ShieldCheck size={12} className="disclaimer-icon" />
-            <span>
-              Totals come from recorded orders, bills, expenses, stock, and reviews. The assistant only explains them.
-            </span>
-          </div>
         </footer>
+
+        {voiceOpen && (
+          <div className="voice-call-overlay">
+            <LiveVoiceSession
+              conversationId={conversationId}
+              startDate={startDate}
+              endDate={endDate}
+              onConversationReady={setConversationId}
+              onEnded={finishVoiceCall}
+            />
+          </div>
+        )}
 
         {/* Evidence Inspector Modal */}
         {inspectingEvidence && (

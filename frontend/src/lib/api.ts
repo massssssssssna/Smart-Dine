@@ -152,16 +152,35 @@ export type AssistantQuestionRequest = {
   question: string;
   start_date: string;
   end_date: string;
+  conversation_id?: string;
 };
 
 export type AssistantQuestionResponse = {
   run_id: string;
+  conversation_id: string;
   answer: string;
   evidence_ids: string[];
   period: { start_date: string; end_date: string };
   evidence: AssistantEvidence[];
   verified_metrics: Record<string, unknown>;
   notice: string;
+};
+
+export type AssistantConversation = {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count?: number;
+  messages?: Array<{id:string;role:'user'|'assistant';content:string;created_at:string}>;
+};
+
+export type AssistantVoiceToken = {
+  token: string;
+  url: string;
+  room_name: string;
+  conversation_id: string;
+  expires_at: string;
 };
 
 export type AssistantRunRecord = {

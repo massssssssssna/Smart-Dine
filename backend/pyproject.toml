@@ -19,6 +19,9 @@ dependencies = [
   "numpy>=2,<3",
   "python-multipart>=0.0.20,<1",
   "tzdata>=2025.1",
+  "livekit-agents[cartesia,deepgram,elevenlabs,groq]==1.6.10",
+  "livekit-api>=1.2,<2",
+  "livekit-local-inference==0.2.6",
 ]
 
 [dependency-groups]
