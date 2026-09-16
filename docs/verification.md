@@ -46,3 +46,7 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 - Frontend: Responsive `HistoryExportToolbar` with Karachi timezone windows, date range presets, and non-blocking streaming downloads.
 
 - UI Hierarchy: Active Brigade and Signature Items positioned as restaurant overview widgets, with HistoryExportToolbar situated directly above the order table.
+
+### Inventory Alert Tests
+- Tested soft-deleted ingredient exclusion from stock queries.
+- Confirmed that inactive drinks (0 pieces) do not trigger false positive low stock alarms.
