@@ -50,3 +50,7 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 ### Inventory Alert Tests
 - Tested soft-deleted ingredient exclusion from stock queries.
 - Confirmed that inactive drinks (0 pieces) do not trigger false positive low stock alarms.
+
+### Billing Verification
+- Verified 5% and 10% promotional discount calculations against gross subtotal.
+- Confirmed tax application strictly post-discount.
