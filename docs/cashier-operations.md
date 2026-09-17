@@ -8,3 +8,7 @@
 
 ## Receipt Note Templates
 Print templates format special dietary instructions and manager courtesies cleanly on thermal receipts.
+
+## Split-Bill Modal UI
+- Clear seat selection checkboxes.
+- Real-time proportional tax distribution across split bills.
