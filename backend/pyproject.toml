@@ -22,6 +22,8 @@ dependencies = [
   "livekit-agents[cartesia,deepgram,elevenlabs,groq]==1.6.10",
   "livekit-api>=1.2,<2",
   "livekit-local-inference==0.2.6",
+  "openpyxl>=3.1.5",
+  "reportlab>=5.0.1",
 ]
 
 [dependency-groups]
