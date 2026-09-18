@@ -54,3 +54,7 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 ### Billing Verification
 - Verified 5% and 10% promotional discount calculations against gross subtotal.
 - Confirmed tax application strictly post-discount.
+
+### Voice Agent Handshake Verification
+- Verified signed JWT generation via `/api/v1/assistant/voice/token`.
+- Validated role restrictions ensuring only authenticated managers obtain voice session grants.
