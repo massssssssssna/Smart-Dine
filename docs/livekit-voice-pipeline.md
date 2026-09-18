@@ -8,3 +8,6 @@
 
 ## Latency Optimization
 Audio frame buffer configured at 20ms chunks to achieve sub-400ms time-to-first-audio across Asia/Karachi network routes.
+
+## Visual Indicator
+Voice drawer renders animated SVG wave forms corresponding to speech volume and agent thinking states.
