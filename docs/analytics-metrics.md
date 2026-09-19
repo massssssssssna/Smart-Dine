@@ -10,3 +10,6 @@ Tracks delta between `created_at` and `prepared_at` timestamps to identify peak 
 
 ## Popularity Caching
 Signature dish popularity cached on 1-hour sliding windows to eliminate expensive full table scans.
+
+## Date Range Utilities
+Standardized preset ranges: Today, 7 Days, 30 Days, and 180 Days (6 Months).
