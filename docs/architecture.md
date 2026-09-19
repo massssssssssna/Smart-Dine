@@ -27,3 +27,6 @@ The backend uses a server secret only for Auth administration and narrowly defin
 The worker uses leases, ownership tokens and conditional completion. Database fencing prevents expired workers from overwriting newer results. Forecast/review results and job completion commit together. Retry failures are recorded, not silently discarded.
 
 Audit is append-only through internal routines. Financial snapshots preserve historical costs after recipe or price changes. Review text and tool results are untrusted input to AI; the model has no mutation or arbitrary-query tool.
+
+## Export and Reporting Pipeline
+Historical reports stream directly via `StreamingResponse` using in-memory byte buffers (`io.BytesIO`). Data isolation ensures kitchen displays cannot access financial details, while Excel exports employ leading-character sanitization against formula injection attacks (CWE-1236).
