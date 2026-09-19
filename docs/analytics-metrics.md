@@ -7,3 +7,6 @@
 
 ## Kitchen Preparation Times
 Tracks delta between `created_at` and `prepared_at` timestamps to identify peak shift bottlenecks.
+
+## Popularity Caching
+Signature dish popularity cached on 1-hour sliding windows to eliminate expensive full table scans.
