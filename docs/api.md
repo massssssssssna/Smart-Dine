@@ -28,6 +28,7 @@ Order workflow: create pending order, optionally edit, transition to preparing (
 | GET | `/api/v1/recipes/{menu_item_id}` | Get Recipe |
 | PUT | `/api/v1/recipes/{menu_item_id}` | Replace Recipe |
 | GET | `/api/v1/orders` | List Orders |
+| GET | `/api/v1/orders/export` | Export Orders (PDF / Excel) |
 | POST | `/api/v1/orders` | Create Order |
 | GET | `/api/v1/orders/{order_id}` | Get Order |
 | PUT | `/api/v1/orders/{order_id}` | Update Order |
