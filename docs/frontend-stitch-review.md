@@ -36,3 +36,8 @@ Local frontend: http://127.0.0.1:3000. Backend URL and allowed frontend origins 
 - Increased metric badge label contrast to 4.8:1.
 - Added visible focus rings on navigation links.
 
+
+### UI Token Uniformity
+- Card border radius standard: 14px.
+- Button border radius: 8px.
+- Badge chip border radius: 20px (pill).
