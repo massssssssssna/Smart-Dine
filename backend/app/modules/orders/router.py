@@ -1,10 +1,12 @@
+from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from app.api.dependencies import require_cashier, require_waiter_or_manager, require_kitchen_or_manager
 from app.core.exceptions import AppError
 from app.core.security import Actor
 from app.modules.common import ActorDep, GatewayDep, IdempotencyKey, PageDep, payload
+from app.modules.orders.export_service import build_excel_export, build_pdf_export, fetch_orders_for_export
 from app.modules.orders.schemas import OrderCreate, OrderUpdate, OrderTransition, OrderPayment
 from app.modules.orders.service import OrderService
 
@@ -27,6 +29,77 @@ async def receipt(order_id: UUID, gateway: GatewayDep, cashier: CashierDep):
 @router.post('/{order_id}/pay')
 async def pay_order(order_id: UUID, body: OrderPayment, gateway: GatewayDep, cashier: CashierDep, key: IdempotencyKey):
     return await OrderService(gateway, cashier.role).execute('order_pay', payload(body, order_id), key)
+
+
+@router.get('/export')
+async def export_orders(
+    gateway: GatewayDep,
+    actor: ActorDep,
+    format: Literal['pdf', 'excel'] = Query(default='excel'),
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    status: Literal['pending', 'preparing', 'ready', 'completed', 'cancelled', 'all'] | None = Query(default=None),
+    q: str = Query(default='', max_length=100),
+    scope: Literal['manager', 'cashier', 'waiter', 'kitchen'] | None = Query(default=None),
+):
+    # Enforce role boundaries on scope
+    effective_scope: Literal['manager', 'cashier', 'waiter', 'kitchen']
+    if actor.role == 'manager':
+        effective_scope = scope or 'manager'
+    elif actor.staff_type == 'cashier':
+        effective_scope = 'cashier'
+    elif actor.staff_type == 'waiter':
+        effective_scope = 'waiter'
+    elif actor.staff_type == 'kitchen':
+        effective_scope = 'kitchen'
+    else:
+        effective_scope = 'waiter'
+
+    records, meta = await fetch_orders_for_export(
+        gateway=gateway,
+        actor=actor,
+        start_date=start_date,
+        end_date=end_date,
+        status=status,
+        q=q,
+        scope=effective_scope,
+    )
+
+    clean_start = start_date.strftime('%Y%m%d')
+    clean_end = end_date.strftime('%Y%m%d')
+    scope_tag = effective_scope.capitalize()
+
+    if format == 'pdf':
+        buf = build_pdf_export(
+            records=records,
+            scope=effective_scope,
+            start_date=start_date,
+            end_date=end_date,
+            actor=actor,
+            meta=meta,
+        )
+        media_type = 'application/pdf'
+        filename = f'SmartDine_{scope_tag}_History_{clean_start}_{clean_end}.pdf'
+    else:
+        buf = build_excel_export(
+            records=records,
+            scope=effective_scope,
+            start_date=start_date,
+            end_date=end_date,
+            actor=actor,
+            meta=meta,
+        )
+        media_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        filename = f'SmartDine_{scope_tag}_History_{clean_start}_{clean_end}.xlsx'
+
+    return Response(
+        content=buf.getvalue(),
+        media_type=media_type,
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Cache-Control': 'no-store',
+        },
+    )
 
 
 @router.get("")
