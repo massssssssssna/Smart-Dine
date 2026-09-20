@@ -36,3 +36,11 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 - Thermal QR Receipt: Scannable 2D QR rendered on 76 mm thermal receipt roll upon cashier bill settlement.
 - Public Review Flow: Token-authenticated, zero-login customer review form with 1-5 star ratings, operational aspect scores, and dish-by-dish item reviews.
 - Executive Intelligence: Manager console tab with timeframes, shifts, KPI cards, AI quotes, and dish satisfaction leaderboard.
+
+## Phase 3 Verification — Historical Order & Bill Reporting (PDF & Excel)
+
+- Export test suite: **7/7 passed** (`backend/tests/api/test_orders_export.py`).
+- Full test suite: **96/96 passed** across all backend modules.
+- Formats: High-density landscape A4 PDF with dynamic `NumberedCanvas` ('Page X of Y'), and Excel (.xlsx) 3-sheet workbook with formula injection sanitization.
+- Portal Scopes: Complete historical access for Manager, billing history for Cashier, personal orders for Waiter, and financial-masked culinary dispatches for Kitchen.
+- Frontend: Responsive `HistoryExportToolbar` with Karachi timezone windows, date range presets, and non-blocking streaming downloads.
