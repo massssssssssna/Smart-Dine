@@ -43,3 +43,6 @@ This delivery runs locally. Before a public multi-instance deployment, configure
 ## Authentication & Token Renewal
 Expired JWT bearer tokens trigger an automatic 401 interceptor that requests session refresh before failing downstream requests.
 
+
+## UV Cache Optimization
+Dependencies are isolated in `.venv` with persistent binary wheels to ensure fast offline startup.
