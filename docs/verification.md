@@ -58,3 +58,7 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 ### Voice Agent Handshake Verification
 - Verified signed JWT generation via `/api/v1/assistant/voice/token`.
 - Validated role restrictions ensuring only authenticated managers obtain voice session grants.
+
+### Worker Idempotency Verification
+- Validated processing job deduplication keys.
+- Confirmed failed jobs retry up to max_attempts before dead-letter status.
