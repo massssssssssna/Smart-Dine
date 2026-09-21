@@ -3,6 +3,7 @@
 ## Requirements
 
 - Python 3.12 and uv; alternatively Docker for the supplied Compose setup.
+- `reportlab` (>=5.0.0) and `openpyxl` (>=3.1.5) for PDF and Excel report compilation.
 - Supabase project with the versioned SQL migrations applied in filename order.
 - Supabase publishable and server secret keys. The secret belongs only in backend `.env`.
 - Groq API key for review analysis and the assistant. Forecasting is statistical and does not use Groq.
