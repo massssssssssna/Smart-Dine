@@ -104,16 +104,37 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
       }
     }
 
-    let data = upstream.status === 204 ? null : await upstream.json();
+    const contentType = upstream.headers.get('content-type') || '';
+    const isBinary = contentType.includes('application/pdf') ||
+      contentType.includes('spreadsheetml') ||
+      contentType.includes('application/vnd.openxmlformats') ||
+      contentType.includes('application/octet-stream');
 
-    if (path === 'auth/login' && upstream.ok) {
-      session = data as SessionPayload;
-      data = { user: (data as SessionPayload).user };
+    let res: NextResponse;
+
+    if (upstream.status === 204) {
+      res = new NextResponse(null, { status: 204 });
+    } else if (isBinary && upstream.ok) {
+      const arrayBuffer = await upstream.arrayBuffer();
+      res = new NextResponse(arrayBuffer, {
+        status: upstream.status,
+        headers: {
+          'Content-Type': contentType,
+          'Content-Disposition': upstream.headers.get('content-disposition') || 'attachment',
+        },
+      });
+      const len = upstream.headers.get('content-length');
+      if (len) res.headers.set('Content-Length', len);
+    } else {
+      let data = await upstream.json().catch(() => ({ message: 'Invalid response from upstream service.' }));
+
+      if (path === 'auth/login' && upstream.ok) {
+        session = data as SessionPayload;
+        data = { user: (data as SessionPayload).user };
+      }
+
+      res = NextResponse.json(data, { status: upstream.status });
     }
-
-    const res = upstream.status === 204
-      ? new NextResponse(null, { status: 204 })
-      : NextResponse.json(data, { status: upstream.status });
 
     res.headers.set('Cache-Control', 'no-store');
 
