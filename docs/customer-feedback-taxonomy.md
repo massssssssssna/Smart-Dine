@@ -6,3 +6,6 @@
 - `cleanliness`: Table hygiene, cutlery cleanliness, dining hall ambiance.
 - `hospitality`: Staff friendliness, attentiveness, courteous greeting.
 - `price_value`: Portion size versus selling price.
+
+## Keyword Categorization
+Automatic tagging extracts terms like 'kharahi', 'biryani', 'speed', 'delay' to enrich manager review reports.
