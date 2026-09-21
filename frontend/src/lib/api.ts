@@ -7,6 +7,31 @@ export async function api<T=unknown>(path:string,method='GET',body?:unknown,key?
  if(!response.ok) throw new ApiError(data?.message||'The request could not be completed.',response.status);
  return data;
 }
+export async function downloadReport(path: string, defaultFilename: string): Promise<void> {
+  const response = await fetch('/api/backend/' + path, { method: 'GET', cache: 'no-store' });
+  if (!response.ok) {
+    let errMessage = 'Download failed.';
+    try {
+      const json = await response.json();
+      if (json?.message) errMessage = json.message;
+    } catch {}
+    throw new ApiError(errMessage, response.status);
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  let filename = defaultFilename;
+  const match = disposition.match(/filename=["']?([^"';]+)["']?/i);
+  if (match && match[1]) filename = match[1].trim();
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
 export const money=(value:string|number=0)=>new Intl.NumberFormat('en-PK',{style:'currency',currency:'PKR',maximumFractionDigits:2}).format(Number(value));
 export type Profile={id:string;email:string;full_name:string;role:'manager'|'staff';staff_type:'waiter'|'kitchen'|'cashier';is_active:boolean;version:number;cashier_billing_enabled?:boolean};
 export type MenuItem={id:string;name:string;category:string;selling_price:string;packaging_cost?:string;is_active:boolean;version:number;stock_ingredient_id?:string|null};
