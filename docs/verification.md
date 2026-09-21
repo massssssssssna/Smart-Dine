@@ -62,3 +62,6 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 ### Worker Idempotency Verification
 - Validated processing job deduplication keys.
 - Confirmed failed jobs retry up to max_attempts before dead-letter status.
+
+### Multilingual Review Tests
+- Verified positive/negative sentiment classification in English, Urdu, and Roman Urdu customer comments.
