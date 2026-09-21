@@ -9,3 +9,6 @@
 
 ## Keyword Categorization
 Automatic tagging extracts terms like 'kharahi', 'biryani', 'speed', 'delay' to enrich manager review reports.
+
+## Input Sanitization
+HTML tags and script fragments stripped during review submission to safeguard manager dashboard views.
