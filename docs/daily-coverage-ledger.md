@@ -7,3 +7,6 @@
 
 ## Override Auditing
 Any administrative adjustment to closed days logs timestamp, user ID, and justification note into `private.audit_logs`.
+
+## Shift Alert UI
+Unclosed ledger days display an amber status pill on the manager dashboard navigation bar.
