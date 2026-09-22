@@ -1,0 +1,266 @@
+.toolbarContainer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid var(--line, #dce8df);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(3, 36, 26, 0.04);
+}
+
+.controlsLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.presetsGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #f1f6f2;
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid var(--line, #dce8df);
+}
+
+.presetBtn {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted, #687870);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.presetBtn:hover {
+  color: var(--text, #0b1f15);
+  background: #e3ede5;
+}
+
+.presetBtnActive {
+  background: var(--forest, #03241a) !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(3, 36, 26, 0.2);
+}
+
+.customDateBox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid var(--line, #dce8df);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.customDateBox input[type="date"] {
+  min-height: 28px;
+  padding: 2px 6px;
+  border: 1px solid #d0ded3;
+  border-radius: 4px;
+  font-size: 11px;
+  width: auto;
+  color: var(--text, #0b1f15);
+  background: #fcfdfc;
+  outline: none;
+}
+
+.customDateBox input[type="date"]:focus {
+  border-color: #3d6a51;
+  box-shadow: 0 0 0 2px rgba(201, 150, 43, 0.2);
+}
+
+.dateSep {
+  color: var(--muted, #687870);
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.recordsBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: #f0f7f2;
+  border: 1px solid #d4e5d8;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--forest, #03241a);
+}
+
+.recordsBadge svg {
+  color: #3d6a51;
+}
+
+.controlsRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+}
+
+.exportBtnWrap {
+  position: relative;
+}
+
+.exportTriggerBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(180deg, #113829 0%, #03241a 100%);
+  color: #ffffff;
+  border: 1px solid #0b3822;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(3, 36, 26, 0.15);
+  transition: all 0.18s ease;
+}
+
+.exportTriggerBtn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #194634 0%, #083325 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(3, 36, 26, 0.22);
+}
+
+.exportTriggerBtn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.dropdownMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+  background: #ffffff;
+  border: 1px solid #dce8df;
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(3, 36, 26, 0.16);
+  padding: 6px;
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: dropIn 0.15s ease-out;
+}
+
+@keyframes dropIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.menuOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  color: var(--text, #0b1f15);
+}
+
+.menuOption:hover {
+  background: #eef7f0;
+}
+
+.menuOptionIcon {
+  margin-top: 2px;
+  color: #2c7345;
+  flex-shrink: 0;
+}
+
+.menuOptionText strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #03241a;
+}
+
+.menuOptionText small {
+  display: block;
+  font-size: 10px;
+  color: #687870;
+  margin-top: 1px;
+}
+
+.errorBanner {
+  width: 100%;
+  padding: 8px 12px;
+  background: #fff0ed;
+  border: 1px solid #f2cac6;
+  border-radius: 5px;
+  color: #a22a26;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.errorClose {
+  background: transparent;
+  border: none;
+  color: #a22a26;
+  cursor: pointer;
+  padding: 2px 5px;
+  font-size: 12px;
+}
+
+.spinner {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 800px) {
+  .toolbarContainer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .controlsLeft {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .controlsRight {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .presetsGroup {
+    overflow-x: auto;
+    width: 100%;
+  }
+}
