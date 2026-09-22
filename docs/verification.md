@@ -65,3 +65,6 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 
 ### Multilingual Review Tests
 - Verified positive/negative sentiment classification in English, Urdu, and Roman Urdu customer comments.
+
+### Daily Ledger Audit Tests
+- Asserted that daily closed totals match the sum of item snapshots.
