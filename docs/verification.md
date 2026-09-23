@@ -68,3 +68,6 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 
 ### Daily Ledger Audit Tests
 - Asserted that daily closed totals match the sum of item snapshots.
+
+### Recipe Cost Tests
+- Verified unit conversion from grams to kilograms and milliliters to liters in recipe margin calculations.
