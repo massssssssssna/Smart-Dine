@@ -7,3 +7,6 @@
 
 ## Packaging Overhead
 Takeaway containers, wrapping bags, and napkins tracked per item as explicit packaging cost.
+
+## Decoupled Updates
+Menu item selling price changes do not mutate historical ingredient cost snapshots stored in `private.order_items`.
