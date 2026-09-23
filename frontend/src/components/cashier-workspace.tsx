@@ -5,6 +5,7 @@ import {Receipt,LogOut,Printer,Check,Search,WalletCards,ListChecks,TrendingUp,Ca
 import QRCode from 'qrcode';
 import {api,ApiError,Profile,Page,money} from '@/lib/api';
 import {Brand,Modal,Field,Empty} from './ui';
+import {HistoryExportToolbar} from './history-export-toolbar';
 import styles from './cashier.module.css';
 
 type Bill={id:string;order_number:string;floor_name_snapshot:string|null;table_name_snapshot:string|null;seats_snapshot:number|null;status:string;version:number;notes:string;subtotal:string;discount:string;tax:string;tax_rate?:string|number;discount_percent?:string|number|null;discount_reason?:string|null;total:string;created_at:string;completed_at:string|null;paid_by?:string|null;paid_by_name?:string|null;paid_by_email?:string|null;cash_received:string|null;change_given:string|null;items:{id:string;name_snapshot:string;quantity:number;price_snapshot:string}[]};
@@ -26,6 +27,7 @@ async function loadEveryBill(firstPage:Page<Bill>):Promise<Bill[]>{
 export default function CashierWorkspace(){
  const [me,setMe]=useState<Profile|null>(null),[bills,setBills]=useState<Bill[]>([]),[allBills,setAllBills]=useState<Bill[]>([]),[filter,setFilter]=useState('unpaid'),[search,setSearch]=useState('');
  const [section,setSection]=useState<'today'|'history'>('today'),[chartMode,setChartMode]=useState<'daily'|'monthly'>('daily');
+ const [cashierStartDate,setCashierStartDate]=useState(''),[cashierEndDate,setCashierEndDate]=useState('');
  const [offset,setOffset]=useState(0),[total,setTotal]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(true),[selected,setSelected]=useState<ReceiptData|null>(null);
  const [cash,setCash]=useState(''),[discountPercent,setDiscountPercent]=useState('0'),[discountReason,setDiscountReason]=useState(''),[busy,setBusy]=useState(false),[paymentError,setPaymentError]=useState('');
  const [reviewToken,setReviewToken]=useState<string|null>(null),[reviewUrl,setReviewUrl]=useState<string|null>(null),[qrCodeDataUrl,setQrCodeDataUrl]=useState<string|null>(null),[loadingQr,setLoadingQr]=useState(false),[qrError,setQrError]=useState('');
@@ -147,7 +149,13 @@ export default function CashierWorkspace(){
  const averageBill=myPaidBills.length?collectedByMe/myPaidBills.length:0;
  const sectionBills=section==='history'?allBills:allBills.filter(b=>['pending','preparing','ready'].includes(b.status)||(b.status==='completed'&&isMine(b)&&!!b.completed_at&&karachiDay(b.completed_at)===today));
  const filteredBills=sectionBills.filter(b=>filter==='all'||(filter==='paid'?b.status==='completed':['pending','preparing','ready'].includes(b.status)));
- const visible=filteredBills.filter(b=>(b.id+' '+b.order_number+' '+b.floor_name_snapshot+' '+b.table_name_snapshot+' '+b.notes).toLowerCase().includes(search.toLowerCase()));
+ const visible=filteredBills.filter(b=>{
+   if(section==='history'&&cashierStartDate&&cashierEndDate&&b.created_at){
+     const billDay=karachiDay(b.created_at);
+     if(billDay<cashierStartDate||billDay>cashierEndDate)return false;
+   }
+   return (b.id+' '+b.order_number+' '+b.floor_name_snapshot+' '+b.table_name_snapshot+' '+b.notes).toLowerCase().includes(search.toLowerCase());
+ });
  const monthlyHistory=Object.entries(completedBills.reduce<Record<string,{count:number,total:number}>>((acc,bill)=>{
    const key=karachiDay(bill.completed_at as string).slice(0,7);
    acc[key]??={count:0,total:0};acc[key].count+=1;acc[key].total+=Number(bill.total||0);return acc;
@@ -181,6 +189,15 @@ export default function CashierWorkspace(){
    </section>}
    <div className={styles.toolbar}>{section==='today'?<div className={styles.filters}>{['unpaid','paid'].map(value=><button key={value} className={filter===value?'':'soft'} onClick={()=>{setFilter(value);setOffset(0);}}>{value==='paid'?"Paid today":'Unpaid'}</button>)}</div>:<div><strong>All recorded bills</strong><div className="muted">Newest bills appear first</div></div>}<label className="search"><Search size={16}/><input aria-label="Search bills" placeholder="Search bill, receipt or table…" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>
    {error&&<p className="error" role="alert">{error}</p>}
+   {section==='history'&&(
+     <HistoryExportToolbar
+       portal="cashier"
+       totalRecords={visible.length}
+       searchQuery={search}
+       statusFilter={filter==='paid'?'completed':filter==='unpaid'?'pending':'all'}
+       onDateRangeChange={(s,e)=>{setCashierStartDate(s);setCashierEndDate(e);}}
+     />
+   )}
    <section className="panel"><div className="panel-head"><h2>{section==='history'?'Bill history':filter==='paid'?"Today's paid bills":"Today's billing queue"}</h2><span className="muted">{visible.length} bills</span></div>
     <div className="table-wrap"><table><thead><tr><th>Bill / table</th><th>Time</th><th>Total</th><th>Payment</th><th>Order</th><th>Action</th></tr></thead><tbody>{visible.map(b=><tr key={b.id}><td><strong>{b.order_number||b.id}</strong><div>{[b.floor_name_snapshot,b.table_name_snapshot].filter(Boolean).join(' · ')||b.notes.split('\n')[0]||'Dining order'}</div></td><td>{time(b.created_at)}</td><td>{money(b.total)}</td><td><span className={`badge ${b.status==='completed'?'active':b.status==='cancelled'?'inactive':'pending'}`}>{b.status==='completed'?'Paid':b.status==='cancelled'?'Cancelled':'Unpaid'}</span></td><td>{b.status==='completed'?'Completed':b.status}</td><td><button className="soft" onClick={()=>void openBill(b)}>View bill</button></td></tr>)}</tbody></table></div>
     {!visible.length&&<Empty>No bills in this view.</Empty>}
