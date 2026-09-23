@@ -15,6 +15,7 @@ import { ReviewsPanel } from './reviews-panel';
 import { AssistantDrawer } from './assistant-drawer';
 import { RoleInsights } from './role-insights';
 import { useConfirmation } from './use-confirmation';
+import { HistoryExportToolbar } from './history-export-toolbar';
 
 type Editor = { kind: 'order' | 'menu' | 'staff' | 'credentials' | 'recipe'; item?: Order | MenuItem | Profile };
 type StockAlert = {id:string;name:string;stock_quantity:number|string;reorder_level:number|string;unit?:string};
@@ -42,6 +43,8 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
   const [staffSubTab, setStaffSubTab] = useState<'accounts' | 'ledger'>('accounts');
   const [orderStaffFilter, setOrderStaffFilter] = useState<string>('');
   const [orderDateRange, setOrderDateRange] = useState<'all' | '7d' | '30d' | '180d'>('all');
+  const [exportStartDate, setExportStartDate] = useState<string>('');
+  const [exportEndDate, setExportEndDate] = useState<string>('');
   const [tab, setTab] = useState('overview');
   const [error, setError] = useState('');
   const [isReady, setIsReady] = useState(false);
@@ -191,7 +194,10 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
       if (!matchesStaff) return false;
     }
 
-    if (orderDateRange !== 'all') {
+    if (exportStartDate && exportEndDate && o.created_at) {
+      const orderDay = karachiDay(o.created_at);
+      if (orderDay < exportStartDate || orderDay > exportEndDate) return false;
+    } else if (orderDateRange !== 'all') {
       const orderTime = new Date(o.created_at).getTime();
       const diffDays = (Date.now() - orderTime) / (1000 * 60 * 60 * 24);
       if (orderDateRange === '7d' && diffDays > 7) return false;
@@ -438,11 +444,55 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                 </div>
               )}
               {portal === 'manager' && (
-                <section className="manager-outlook-wrap" aria-label="Daily customer and sales outlook">
-                  <div className="manager-outlook"><div><span className="eyebrow">SIX-MONTH SALES PATTERN</span><h2>15-day sales outlook</h2><p>Actual sales flow into a weekday-based estimate for the next 15 days.</p></div><article><small>Expected customers</small><strong>{expectedCustomers}</strong><span>guests on a typical day</span></article><article><small>Expected daily sales</small><strong>{money(expectedDailySales)}</strong><span>current 30-day pace</span></article><article className="busy-outlook"><small>Busy-day possibility</small><strong>{money(expectedDailySales*1.2)}</strong><span>up to 20% above usual · around {Math.ceil(expectedCustomers*1.2)} guests</span></article></div>
-                  <div className="manager-flow-head"><div><strong>Daily sales: actual → expected</strong><span>Hover any day for sales and guest count</span></div><div><span><i className="actual-key"/>Actual</span><span><i className="forecast-key"/>Expected</span></div></div>
-                  <div className="manager-sales-flow">{managerSalesFlow.map((point,index)=><span key={point.day} className={point.kind} title={`${point.day} · ${point.kind==='actual'?'Actual':'Expected'} ${money(point.sales)} · ${Math.round(point.guests)} guests`}><i style={{height:`${Math.max(point.sales?7:2,(point.sales/maxManagerFlow)*100)}%`}}/><small>{new Date(`${point.day}T12:00:00`).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</small>{index===14&&<b>Today</b>}</span>)}</div>
-                </section>
+                <>
+                  <section className="manager-outlook-wrap" aria-label="Daily customer and sales outlook">
+                    <div className="manager-outlook"><div><span className="eyebrow">SIX-MONTH SALES PATTERN</span><h2>15-day sales outlook</h2><p>Actual sales flow into a weekday-based estimate for the next 15 days.</p></div><article><small>Expected customers</small><strong>{expectedCustomers}</strong><span>guests on a typical day</span></article><article><small>Expected daily sales</small><strong>{money(expectedDailySales)}</strong><span>current 30-day pace</span></article><article className="busy-outlook"><small>Busy-day possibility</small><strong>{money(expectedDailySales*1.2)}</strong><span>up to 20% above usual · around {Math.ceil(expectedCustomers*1.2)} guests</span></article></div>
+                    <div className="manager-flow-head"><div><strong>Daily sales: actual → expected</strong><span>Hover any day for sales and guest count</span></div><div><span><i className="actual-key"/>Actual</span><span><i className="forecast-key"/>Expected</span></div></div>
+                    <div className="manager-sales-flow">{managerSalesFlow.map((point,index)=><span key={point.day} className={point.kind} title={`${point.day} · ${point.kind==='actual'?'Actual':'Expected'} ${money(point.sales)} · ${Math.round(point.guests)} guests`}><i style={{height:`${Math.max(point.sales?7:2,(point.sales/maxManagerFlow)*100)}%`}}/><small>{new Date(`${point.day}T12:00:00`).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</small>{index===14&&<b>Today</b>}</span>)}</div>
+                  </section>
+
+                  <aside className="right-column" style={{ marginBottom: '28px' }}>
+                    <section className="panel">
+                      <div className="panel-head">
+                        <h3>Active Brigade</h3>
+                        <button className="text-button" onClick={() => setTab('staff')}>Manage all →</button>
+                      </div>
+                      {staff
+                        .filter(s => s.is_active)
+                        .slice(0, 5)
+                        .map(s => (
+                          <div className="person" key={s.id}>
+                            <span className="avatar">{s.full_name[0]}</span>
+                            <div>
+                              <strong>{s.full_name}</strong>
+                              <small>{s.role === 'manager' ? 'Manager' : s.staff_type}</small>
+                            </div>
+                            <span className="dot" />
+                          </div>
+                        ))}
+                    </section>
+                    <section className="panel">
+                      <div className="panel-head">
+                        <h3>Signature Items</h3>
+                        <button className="text-button" onClick={() => setTab('menu')}>View full menu →</button>
+                      </div>
+                      {menu
+                        .filter(m => m.is_active)
+                        .slice(0, 5)
+                        .map((m, i) => (
+                          <div className="menu-preview" key={m.id}>
+                            <span>0{i + 1}</span>
+                            <div>
+                              <strong>{m.name}</strong>
+                              <small>{m.category}</small>
+                            </div>
+                            <b>{money(m.selling_price)}</b>
+                          </div>
+                        ))}
+                      {!menu.length && <Empty>Add your menu to start taking orders.</Empty>}
+                    </section>
+                  </aside>
+                </>
               )}
               {portal === 'kitchen' && (
                 <>
@@ -477,7 +527,7 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                 <RoleInsights portal={portal} me={me} orders={orders} />
               )}
 
-              <div className="toolbar" style={{ flexWrap: 'wrap', gap: '12px' }}>
+              <div className="toolbar" style={{ flexWrap: 'wrap', gap: '12px', marginTop: portal === 'manager' ? '10px' : 0 }}>
                 <div>
                   <h2>{portal === 'manager' ? 'Operations & Historical Orders' : portal === 'waiter' ? 'Active Floor Orders' : 'Kitchen Tickets'}</h2>
                   {portal === 'manager' && (
@@ -493,21 +543,6 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                       <button style={{ padding: '0 4px', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => setOrderStaffFilter('')}>✕</button>
                     </div>
                   )}
-                  {portal === 'manager' && (
-                    <div className="ticket-filters" style={{ margin: 0 }}>
-                      {(['all', '180d', '30d', '7d'] as const).map(range => (
-                        <button
-                          key={range}
-                          type="button"
-                          className={orderDateRange === range ? 'selected' : ''}
-                          onClick={() => setOrderDateRange(range)}
-                          style={{ padding: '5px 9px', fontSize: '11px' }}
-                        >
-                          {range === 'all' ? 'All (6 Mo)' : range === '180d' ? 'Last 180d' : range === '30d' ? 'Last 30d' : 'Last 7d'}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                   <label className="search" style={{ margin: 0 }}>
                     <Search size={16} />
                     <input
@@ -520,125 +555,98 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                 </div>
               </div>
 
+              {portal === 'manager' && (
+                <HistoryExportToolbar
+                  portal="manager"
+                  totalRecords={filtered.length}
+                  searchQuery={search}
+                  statusFilter="all"
+                  defaultPreset="180d"
+                  onDateRangeChange={(s, e) => {
+                    setExportStartDate(s);
+                    setExportEndDate(e);
+                  }}
+                />
+              )}
+
               {portal === 'manager' ? (
-                <div className="dashboard-grid">
-                  <section className="panel table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Order ID</th>
-                          <th>Floor / Table</th>
-                          <th>Staff Attribution</th>
-                          <th>Items Ordered</th>
-                          <th>Date & Time</th>
-                          <th>Status</th>
-                          <th>Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filtered.map(o => (
-                          <tr key={o.id}>
-                            <td>
-                              <button className="text-button" style={{ fontWeight: 600 }} onClick={() => setEditor({ kind: 'order', item: o })}>
-                                {o.order_number||o.id.slice(0, 10)}
-                              </button>
-                            </td>
-                            <td>
-                              <div style={{ fontWeight: 600 }}>
-                                {[o.floor_name_snapshot ? `Floor ${o.floor_name_snapshot}` : '', o.table_name_snapshot].filter(Boolean).join(' · ') || 'Dining room'}
-                                {o.seats_snapshot ? <span className="muted" style={{ fontSize: '10px' }}> ({o.seats_snapshot} seats)</span> : null}
-                              </div>
-                              {o.notes && <div className="muted" style={{ fontSize: '10px', marginTop: '2px' }}>“{o.notes}”</div>}
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px' }}>
-                                <span title={`Waiter account: ${o.created_by_email || 'N/A'}`}>
-                                  <UserRound size={12}/> <strong style={{ color: '#03241a' }}>{o.created_by_name || 'Waiter'}</strong>
+                <section className="panel table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Order ID</th>
+                        <th>Floor / Table</th>
+                        <th>Staff Attribution</th>
+                        <th>Items Ordered</th>
+                        <th>Date & Time</th>
+                        <th>Status</th>
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(o => (
+                        <tr key={o.id}>
+                          <td>
+                            <button className="text-button" style={{ fontWeight: 600 }} onClick={() => setEditor({ kind: 'order', item: o })}>
+                              {o.order_number||o.id.slice(0, 10)}
+                            </button>
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>
+                              {[o.floor_name_snapshot ? `Floor ${o.floor_name_snapshot}` : '', o.table_name_snapshot].filter(Boolean).join(' · ') || 'Dining room'}
+                              {o.seats_snapshot ? <span className="muted" style={{ fontSize: '10px' }}> ({o.seats_snapshot} seats)</span> : null}
+                            </div>
+                            {o.notes && <div className="muted" style={{ fontSize: '10px', marginTop: '2px' }}>“{o.notes}”</div>}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px' }}>
+                              <span title={`Waiter account: ${o.created_by_email || 'N/A'}`}>
+                                <UserRound size={12}/> <strong style={{ color: '#03241a' }}>{o.created_by_name || 'Waiter'}</strong>
+                              </span>
+                              {o.prepared_by_name && (
+                                <span className="muted" title={`Chef account: ${o.prepared_by_email || 'N/A'}`} style={{ fontSize: '10px' }}>
+                                  <CookingPot size={11}/> Chef: {o.prepared_by_name}
                                 </span>
-                                {o.prepared_by_name && (
-                                  <span className="muted" title={`Chef account: ${o.prepared_by_email || 'N/A'}`} style={{ fontSize: '10px' }}>
-                                    <CookingPot size={11}/> Chef: {o.prepared_by_name}
-                                  </span>
-                                )}
-                                {o.paid_by_name && (
-                                  <span className="muted" title={`Cashier account: ${o.paid_by_email || 'N/A'}`} style={{ fontSize: '10px' }}>
-                                    <CreditCard size={11}/> Cashier: {o.paid_by_name}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td>
-                              {o.items.map((i, idx) => (
-                                <div key={idx} style={{ fontSize: '11px' }}>
-                                  {i.quantity} × {i.name_snapshot || i.name}
-                                </div>
-                              ))}
-                            </td>
-                            <td>
-                              <div style={{ fontWeight: 500 }}>
-                                {new Date(o.created_at).toLocaleDateString('en-PK', {
-                                  day: '2-digit',
-                                  month: 'short',
-                                  year: 'numeric',
-                                  timeZone: 'Asia/Karachi',
-                                })}
-                              </div>
-                              <div className="muted" style={{ fontSize: '10px' }}>
-                                {new Date(o.created_at).toLocaleTimeString('en-PK', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  timeZone: 'Asia/Karachi',
-                                })}
-                              </div>
-                            </td>
-                            <td><Badge status={o.status} /></td>
-                            <td style={{ fontWeight: 600 }}>{money(o.total)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {!filtered.length && <Empty>No orders yet. Take your first order to begin service.</Empty>}
-                  </section>
-                  <aside className="right-column">
-                    <section className="panel">
-                      <div className="panel-head">
-                        <h3>Active Brigade</h3>
-                        <button className="text-button" onClick={() => setTab('staff')}>Manage all →</button>
-                      </div>
-                      {staff
-                        .filter(s => s.is_active)
-                        .slice(0, 5)
-                        .map(s => (
-                          <div className="person" key={s.id}>
-                            <span className="avatar">{s.full_name[0]}</span>
-                            <div>
-                              <strong>{s.full_name}</strong>
-                              <small>{s.role === 'manager' ? 'Manager' : s.staff_type}</small>
+                              )}
+                              {o.paid_by_name && (
+                                <span className="muted" title={`Cashier account: ${o.paid_by_email || 'N/A'}`} style={{ fontSize: '10px' }}>
+                                  <CreditCard size={11}/> Cashier: {o.paid_by_name}
+                                </span>
+                              )}
                             </div>
-                            <span className="dot" />
-                          </div>
-                        ))}
-                    </section>
-                    <section className="panel">
-                      <h3>Signature Items</h3>
-                      {menu
-                        .filter(m => m.is_active)
-                        .slice(0, 5)
-                        .map((m, i) => (
-                          <div className="menu-preview" key={m.id}>
-                            <span>0{i + 1}</span>
-                            <div>
-                              <strong>{m.name}</strong>
-                              <small>{m.category}</small>
+                          </td>
+                          <td>
+                            {o.items.map((i, idx) => (
+                              <div key={idx} style={{ fontSize: '11px' }}>
+                                {i.quantity} × {i.name_snapshot || i.name}
+                              </div>
+                            ))}
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 500 }}>
+                              {new Date(o.created_at).toLocaleDateString('en-PK', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                                timeZone: 'Asia/Karachi',
+                              })}
                             </div>
-                            <b>{money(m.selling_price)}</b>
-                          </div>
-                        ))}
-                      {!menu.length && <Empty>Add your menu to start taking orders.</Empty>}
-                      <button className="soft full" onClick={() => setTab('menu')}>View full menu →</button>
-                    </section>
-                  </aside>
-                </div>
+                            <div className="muted" style={{ fontSize: '10px' }}>
+                              {new Date(o.created_at).toLocaleTimeString('en-PK', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                timeZone: 'Asia/Karachi',
+                              })}
+                            </div>
+                          </td>
+                          <td><Badge status={o.status} /></td>
+                          <td style={{ fontWeight: 600 }}>{money(o.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!filtered.length && <Empty>No orders yet. Take your first order to begin service.</Empty>}
+                </section>
               ) : portal === 'kitchen' ? (
                 <div className="kanban">
                   {[
@@ -732,6 +740,18 @@ export default function Workspace({ portal: initialPortal }: { portal: string })
                     onChange={e => setSearch(e.target.value)}
                   />
                 </label>
+              </div>
+              <div style={{ padding: '0 22px 14px' }}>
+                <HistoryExportToolbar
+                  portal={portal === 'kitchen' ? 'kitchen' : 'waiter'}
+                  totalRecords={historyOrders.length}
+                  searchQuery={search}
+                  statusFilter="all"
+                  onDateRangeChange={(s, e) => {
+                    setExportStartDate(s);
+                    setExportEndDate(e);
+                  }}
+                />
               </div>
               <table>
                 <thead>
