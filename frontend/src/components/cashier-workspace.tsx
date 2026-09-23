@@ -1,3 +1,4 @@
+/* Cashier Workspace - Billing & History */
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
