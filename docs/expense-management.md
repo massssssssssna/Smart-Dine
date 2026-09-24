@@ -9,3 +9,6 @@
 
 ## Expense Percentage Breakdown
 Calculates category share against total monthly expenditures to identify operating cost spikes.
+
+## Quick Expense Entry
+Keyboard shortcuts (Tab navigation and Enter to submit) enable rapid invoice logging during manager shift end.
