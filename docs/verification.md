@@ -71,3 +71,6 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 
 ### Recipe Cost Tests
 - Verified unit conversion from grams to kilograms and milliliters to liters in recipe margin calculations.
+
+### Expense Verification
+- Confirmed that voided expenses (`voided_at IS NOT NULL`) are strictly excluded from net profit aggregations.
