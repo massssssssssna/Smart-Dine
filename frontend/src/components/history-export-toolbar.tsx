@@ -1,3 +1,4 @@
+/* History Export Toolbar Component - SmartDine AI */
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
