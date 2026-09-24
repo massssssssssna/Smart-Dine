@@ -6,3 +6,6 @@
 - `maintenance`: Kitchen equipment repairs, hood cleaning, HVAC servicing.
 - `packaging`: Eco-friendly bags, thermal receipt rolls, food containers.
 - `staff_welfare`: Staff meal allowances, refreshments.
+
+## Expense Percentage Breakdown
+Calculates category share against total monthly expenditures to identify operating cost spikes.
