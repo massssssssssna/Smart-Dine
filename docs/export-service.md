@@ -22,3 +22,6 @@ The Historical Export Service provides asynchronous and on-demand report generat
    - High-density landscape layout with ReportLab Platypus.
    - Dynamic `NumberedCanvas` performing a two-pass calculation for accurate `"Page X of Y"` footers.
    - Flowable Paragraph table cells preventing text overflow or truncation.
+
+## Operational Verification
+All exports verified on live uvicorn server with HTTP 200 streaming responses across Cashier, Manager, Waiter, and Kitchen roles.
