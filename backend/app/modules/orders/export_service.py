@@ -1,3 +1,4 @@
+# Export Engine Service - SmartDine AI
 """Export service for SmartDine order, billing, and culinary ticket histories.
 Supports Excel (.xlsx) and PDF (landscape) with role-based masking,
 Karachi timezone alignment, and Excel formula-injection safety.
