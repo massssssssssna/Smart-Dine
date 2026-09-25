@@ -1777,3 +1777,13 @@
 .evidence-readable{display:grid;gap:7px;margin:0}.evidence-readable>div{display:grid;grid-template-columns:minmax(110px,.4fr) 1fr;gap:10px;padding:7px 0;border-bottom:1px solid #dfe8e1}.evidence-readable dt{font-weight:700;color:#486052}.evidence-readable dd{margin:0;overflow-wrap:anywhere}.evidence-readable ul{margin:0;padding-left:16px}
 @media(max-width:760px){.customer-feedback-head{flex-direction:column}.feedback-layout{grid-template-columns:1fr}.feedback-aspects{grid-template-columns:1fr 1fr}}
 @media(max-width:480px){.feedback-aspects{grid-template-columns:1fr}}
+
+/* Scrollbar Refinement */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(7, 53, 39, 0.25);
+  border-radius: 4px;
+}
