@@ -80,3 +80,6 @@ Pytest suite utilizes async test client and mocked database gateways to execute 
 
 ### Conftest Isolation
 Test database credentials and secret key mocks are safely encapsulated within fixtures.
+
+### Rate Limiting Tests
+- Validated rate limit protections on `/api/v1/auth/login` and `/api/v1/assistant/questions`.
