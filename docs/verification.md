@@ -44,3 +44,5 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 - Formats: High-density landscape A4 PDF with dynamic `NumberedCanvas` ('Page X of Y'), and Excel (.xlsx) 3-sheet workbook with formula injection sanitization.
 - Portal Scopes: Complete historical access for Manager, billing history for Cashier, personal orders for Waiter, and financial-masked culinary dispatches for Kitchen.
 - Frontend: Responsive `HistoryExportToolbar` with Karachi timezone windows, date range presets, and non-blocking streaming downloads.
+
+- UI Hierarchy: Active Brigade and Signature Items positioned as restaurant overview widgets, with HistoryExportToolbar situated directly above the order table.
