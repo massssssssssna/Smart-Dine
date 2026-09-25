@@ -74,3 +74,6 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 
 ### Expense Verification
 - Confirmed that voided expenses (`voided_at IS NOT NULL`) are strictly excluded from net profit aggregations.
+
+## Test Automation Architecture
+Pytest suite utilizes async test client and mocked database gateways to execute 49+ unit tests without requiring active network connectivity.
