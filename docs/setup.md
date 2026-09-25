@@ -46,3 +46,6 @@ Expired JWT bearer tokens trigger an automatic 401 interceptor that requests ses
 
 ## UV Cache Optimization
 Dependencies are isolated in `.venv` with persistent binary wheels to ensure fast offline startup.
+
+## Database Connection Pool Tuning
+Connection pool sizing configured with 10 max connections and 5 overflow slots to handle concurrent POS transactions smoothly.
