@@ -1,3 +1,4 @@
+/* SmartDine AI Main Workspace */
 'use client';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
