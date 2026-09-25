@@ -77,3 +77,6 @@ The API starts locally; readiness intentionally returns 503 until the server cre
 
 ## Test Automation Architecture
 Pytest suite utilizes async test client and mocked database gateways to execute 49+ unit tests without requiring active network connectivity.
+
+### Conftest Isolation
+Test database credentials and secret key mocks are safely encapsulated within fixtures.
