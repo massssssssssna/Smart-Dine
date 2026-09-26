@@ -9,3 +9,6 @@ It supports both persistent text conversation and real-time voice interaction.
 - Zero hallucinations: answers are grounded in real database figures.
 - Direct and concise answers without unsolicited advice.
 - WhatsApp / SMS executive card style layout with status emojis and bullet points.
+
+## Active Ingredient Enforcement
+Tool `inventory_status` strictly filters on `is_active = true` to prevent soft-deleted items from appearing in stock reports.
