@@ -15,3 +15,6 @@ Tool `inventory_status` strictly filters on `is_active = true` to prevent soft-d
 
 ## Greetings & Small-Talk Architecture
 Conversational small-talk bypasses database analytics audit (`run_id=None`) to prevent foreign key errors while delivering instant, warm greetings.
+
+## Executive Card UI
+Responses render with distinct status badges (`.assistant-msg-status-line`), bullet items (`.assistant-msg-bullet`), and closing summaries.
