@@ -83,3 +83,6 @@ Test database credentials and secret key mocks are safely encapsulated within fi
 
 ### Rate Limiting Tests
 - Validated rate limit protections on `/api/v1/auth/login` and `/api/v1/assistant/questions`.
+
+### Assistant Small-Talk Tests
+- Verified standalone greetings return clean conversational responses without analytics latency.
