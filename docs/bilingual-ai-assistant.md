@@ -12,3 +12,6 @@ It supports both persistent text conversation and real-time voice interaction.
 
 ## Active Ingredient Enforcement
 Tool `inventory_status` strictly filters on `is_active = true` to prevent soft-deleted items from appearing in stock reports.
+
+## Greetings & Small-Talk Architecture
+Conversational small-talk bypasses database analytics audit (`run_id=None`) to prevent foreign key errors while delivering instant, warm greetings.
