@@ -1,0 +1,11 @@
+# SmartDine AI Operations Assistant
+
+## Overview
+SmartDine AI Assistant operates as an intelligent restaurant operations partner for restaurant managers.
+It supports both persistent text conversation and real-time voice interaction.
+
+## Key Capabilities
+- Factual question answering backed by server-verified read tools.
+- Zero hallucinations: answers are grounded in real database figures.
+- Direct and concise answers without unsolicited advice.
+- WhatsApp / SMS executive card style layout with status emojis and bullet points.
