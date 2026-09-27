@@ -21,3 +21,8 @@ Responses render with distinct status badges (`.assistant-msg-status-line`), bul
 
 ## User Bubble Contrast Fix
 User message bubbles now render with dedicated high-contrast white text (`#ffffff`), ensuring perfect readability against the dark emerald background.
+
+## Strict Language Matching
+- English questions receive pure, professional English responses.
+- Urdu / Roman Urdu questions receive fluent, polite Roman Urdu responses.
+- System prompt strictly forbids language mismatching regardless of chat history.
