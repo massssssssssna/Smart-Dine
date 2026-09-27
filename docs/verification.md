@@ -86,3 +86,6 @@ Test database credentials and secret key mocks are safely encapsulated within fi
 
 ### Assistant Small-Talk Tests
 - Verified standalone greetings return clean conversational responses without analytics latency.
+
+### Bilingual Small-Talk Unit Tests
+- Parameterized test assertions for English vs Urdu greetings, thanks, and farewells.
