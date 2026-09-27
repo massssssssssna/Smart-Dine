@@ -49,3 +49,6 @@ Dependencies are isolated in `.venv` with persistent binary wheels to ensure fas
 
 ## Database Connection Pool Tuning
 Connection pool sizing configured with 10 max connections and 5 overflow slots to handle concurrent POS transactions smoothly.
+
+## 14-Day Recent Operations Seeding
+Run `python scripts/seed_14_days_recent_history.py` to populate realistic orders, receipts, reviews, and daily coverage up to today.
