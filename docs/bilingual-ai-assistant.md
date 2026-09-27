@@ -18,3 +18,6 @@ Conversational small-talk bypasses database analytics audit (`run_id=None`) to p
 
 ## Executive Card UI
 Responses render with distinct status badges (`.assistant-msg-status-line`), bullet items (`.assistant-msg-bullet`), and closing summaries.
+
+## User Bubble Contrast Fix
+User message bubbles now render with dedicated high-contrast white text (`#ffffff`), ensuring perfect readability against the dark emerald background.
