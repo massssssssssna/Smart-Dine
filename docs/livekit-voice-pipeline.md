@@ -11,3 +11,6 @@ Audio frame buffer configured at 20ms chunks to achieve sub-400ms time-to-first-
 
 ## Visual Indicator
 Voice drawer renders animated SVG wave forms corresponding to speech volume and agent thinking states.
+
+## Voice Agent Bilingual Protocol
+Voice agent mirrors the speaker's language instantaneously without asterisks or markdown syntax for clean text-to-speech output.
