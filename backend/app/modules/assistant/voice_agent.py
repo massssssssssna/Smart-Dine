@@ -135,7 +135,15 @@ async def _load_session_context(participant) -> tuple[VoiceSessionMetadata, Acto
         access_token="livekit-signed-session",
     )
     admin = Gateway(claims={"role": "service_role"}, is_admin=True)
-    await _owned_conversation(str(metadata.conversation_id), actor, admin)
+    try:
+        await _owned_conversation(str(metadata.conversation_id), actor, admin)
+    except Exception:
+        # Ensure conversation exists so voice session never fails on stale or deleted IDs
+        await admin.query(
+            "insert into private.assistant_conversations (id, actor_id, title) values (%s::uuid, %s::uuid, %s) "
+            "on conflict (id) do update set deleted_at = null",
+            (str(metadata.conversation_id), str(actor.id), "Voice Conversation"),
+        )
     return metadata, actor, gateway, admin
 
 
@@ -242,11 +250,14 @@ async def entrypoint(ctx: JobContext) -> None:
     )
     greeting = f"Hello {actor.full_name}. I'm ready. What would you like to know about the restaurant?"
     await save_conversation_message(admin, str(metadata.conversation_id), "assistant", greeting)
-    session.say(
-        greeting,
-        allow_interruptions=True,
-        add_to_chat_ctx=False,
-    )
+    try:
+        session.say(
+            greeting,
+            allow_interruptions=True,
+            add_to_chat_ctx=False,
+        )
+    except Exception as exc:
+        logger.warning(f"Could not deliver greeting: {exc}")
 
 
 def run() -> None:
