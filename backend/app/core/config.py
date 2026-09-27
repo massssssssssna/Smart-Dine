@@ -16,7 +16,15 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     app_timezone: str = "Asia/Karachi"
     currency: Literal["PKR"] = "PKR"
-    cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://smartdine.aslijarvis.ninja",
+        "http://smartdine.aslijarvis.ninja",
+        "https://aslijarvis.ninja",
+        "http://13.53.190.53",
+        "http://13.53.190.53:3000",
+    ]
     database_url: SecretStr = SecretStr("postgresql://postgres:postgres@127.0.0.1:5432/smartdine")
     jwt_secret_key: SecretStr
     groq_api_key: SecretStr = SecretStr("")
