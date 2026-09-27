@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     jwt_secret_key: SecretStr
     groq_api_key: SecretStr = SecretStr("")
     groq_assistant_model: str = "openai/gpt-oss-120b"
-    groq_assistant_fallback_models: str = "openai/gpt-oss-20b,llama-3.3-70b-versatile,qwen/qwen3.6-27b"
+    groq_assistant_fallback_models: str = "openai/gpt-oss-20b,qwen/qwen3.8-27b"
     groq_review_model: str = "openai/gpt-oss-20b"
     groq_timeout_seconds: float = Field(30, ge=1, le=120)
     livekit_url: str = ""

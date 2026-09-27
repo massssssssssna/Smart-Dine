@@ -119,13 +119,21 @@ def friendly_small_talk(question: str) -> str | None:
 
 
 async def create_with_fallback(client, models: list[str], **kwargs):
-    """Try approved production models in order without exposing provider errors."""
+    """Try approved production models in order with retry for momentary rate limits."""
     last_error = None
     for model in models:
-        try:
-            return await client.chat.completions.create(model=model, **kwargs), model
-        except Exception as exc:
-            last_error = exc
+        for attempt in range(2):
+            try:
+                return await client.chat.completions.create(model=model, **kwargs), model
+            except Exception as exc:
+                last_error = exc
+                err_str = str(exc).lower()
+                logger.warning(f"Groq model {model} attempt {attempt + 1} failed: {exc}")
+                if "429" in err_str or "rate" in err_str or "tokens per minute" in err_str:
+                    await asyncio.sleep(1.5)
+                else:
+                    break
+    logger.error(f"All configured assistant models failed. Last error: {last_error}")
     raise AppError("ai_models_unavailable", "All configured assistant models are temporarily unavailable.", 503) from last_error
 
 
